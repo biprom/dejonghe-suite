@@ -9,7 +9,6 @@
     </parent>
     <groupId>com.adverto.dejonghe.tabletDemo</groupId>
     <artifactId>tabletDemo</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
     <name>tabletDemo</name>
     <description>tabletDemo</description>
     <packaging>jar</packaging>

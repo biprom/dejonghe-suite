@@ -110,7 +110,7 @@ public class SelectProductSubView extends VerticalLayout {
     Product selectedSet;
     Customer selectedCustomer;
 
-    Notification checkDoubleProductInSelectedProductListNotification;
+    Dialog checkDoubleProductInSelectedProductListNotification;
     Notification deleteProductNotification;
 
     UserFunction userFunction = UserFunction.ADMIN;
@@ -2131,10 +2131,9 @@ public class SelectProductSubView extends VerticalLayout {
         return closeBtn;
     }
 
-    private Notification createDoubleProductNotification() {
-        checkDoubleProductInSelectedProductListNotification = new Notification();
-        checkDoubleProductInSelectedProductListNotification.addThemeVariants(NotificationVariant.LUMO_WARNING);
-        checkDoubleProductInSelectedProductListNotification.setPosition(Notification.Position.MIDDLE);
+    private Dialog createDoubleProductNotification() {
+        checkDoubleProductInSelectedProductListNotification = new Dialog();
+        checkDoubleProductInSelectedProductListNotification.setCloseOnOutsideClick(false);
         Icon icon = VaadinIcon.WARNING.create();
         Button seperateButton = new Button("Voeg aantal apart in deze lijst",
                 clickEvent -> {
@@ -2176,19 +2175,6 @@ public class SelectProductSubView extends VerticalLayout {
 
         return checkDoubleProductInSelectedProductListNotification;
     }
-
-//    public Button createCloseBtn(Notification notification) {
-//        Button closeBtn = new Button("Voeg dit artikel er nog eens in!",
-//                clickEvent -> {
-//                    doubleSelectedProduct = null;
-//                    selectedProductList.add(productToAdd);
-//                    selectedProductGrid.getDataProvider().refreshAll();
-//                    setTotalsInFooter();
-//                    notification.close();
-//                });
-//        closeBtn.addThemeVariants(LUMO_TERTIARY_INLINE);
-//        return closeBtn;
-//    }
 
     private Notification createReportErrorRemoveProduct() {
         deleteProductNotification = new Notification();

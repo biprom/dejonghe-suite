@@ -116,20 +116,25 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
         });
 
         filterName.addValueChangeListener(event -> {
-            if(event.getValue().length() > 0){
+            if(event.getValue().length() >= 0){
                 workorderViewState.setCustomer(filterName.getValue());
-                List<WorkOrder> collect = selectedWorkOrders.stream().filter(filter -> (filter.getWorkAddress().getAddressName().toLowerCase().contains(event.getValue().toLowerCase())) ||
-                        (filter.getWorkAddress().getCity().toLowerCase().contains(event.getValue().toLowerCase())) ||
-                        (filter.getWorkAddress().getStreet().toLowerCase().contains(event.getValue().toLowerCase()))||
-                        (filter.getWorkAddress().getCustomerName().toLowerCase().contains(event.getValue().toLowerCase()))).collect(Collectors.toList());
-                addItemsToPendingWorkOrderGridFromFilter(collect);
-                pendingWorkOrdersGrid.getDataProvider().refreshAll();
+                try{
+                    List<WorkOrder> collect = selectedWorkOrders.stream().filter(filter -> (filter.getWorkAddress().getAddressName().toLowerCase().contains(event.getValue().toLowerCase())) ||
+                            (filter.getWorkAddress().getCity().toLowerCase().contains(event.getValue().toLowerCase())) ||
+                            (filter.getWorkAddress().getStreet().toLowerCase().contains(event.getValue().toLowerCase()))||
+                            (filter.getWorkAddress().getCustomerName().toLowerCase().contains(event.getValue().toLowerCase()))).collect(Collectors.toList());
+                    addItemsToPendingWorkOrderGridFromFilter(collect);
+                    pendingWorkOrdersGrid.getDataProvider().refreshAll();
+                }
+                catch (Exception e){
+                    addItemsToPendingWorkOrderGrid(selectedWorkOrders);
+                    pendingWorkOrdersGrid.getDataProvider().refreshAll();
+                }
             }
             else{
                 addItemsToPendingWorkOrderGrid(selectedWorkOrders);
                 pendingWorkOrdersGrid.getDataProvider().refreshAll();
             }
-
         });
     }
 

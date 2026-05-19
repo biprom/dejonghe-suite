@@ -66,10 +66,6 @@ import static com.vaadin.flow.component.button.ButtonVariant.LUMO_TERTIARY_INLIN
 @Menu(order = 0, icon = LineAwesomeIconUrl.COG_SOLID)
 public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnterObserver {
 
-    //@Value( "${linkSpreadsheetBulk}" )
-    private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("/Users/bramvandenberghe/Desktop/dejonghe.xlsx");
-    //private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("D:\\Algemeen\\Documentatie\\Dejonghe-techniek\\Database\\dejonghe.xlsx\\dejonghe.xlsx");
-
     Notification deleteProductNotification;
 
     private final ProductService productService;
@@ -225,7 +221,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         setUpPdfDialog();
         setUpSetSimpleDialog();
         createReportError();
-        setUpSpreadSheet();
 
         this.getStyle()
                 .set("display", "flex")
@@ -689,21 +684,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         );
 
     }
-
-    private void setUpSpreadSheet() {
-        InputStream stream = null;
-        try {
-            stream = linkToBulkSpreadsheet.getInputStream();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            spreadsheet = new Spreadsheet(stream);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        spreadsheet.setHeight("400px");
-    }
+    
 
     private void setUpBulkDialog() {
         bulkDialog = new Dialog();

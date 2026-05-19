@@ -16,7 +16,7 @@
     <modules>
         <module>dejonghe-common</module>
         <module>dejonghe-server</module>
-        <module>dejonghe-tablet</module>
+        <module>tabletDemo</module>
     </modules>
 
     <properties>

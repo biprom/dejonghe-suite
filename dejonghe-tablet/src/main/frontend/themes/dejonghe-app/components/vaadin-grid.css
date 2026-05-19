@@ -1,4 +1,0 @@
-:host ::part(header-cell).industry-column {
-    --vaadin-grid-cell-background: gold;
-    color: blue;
-}

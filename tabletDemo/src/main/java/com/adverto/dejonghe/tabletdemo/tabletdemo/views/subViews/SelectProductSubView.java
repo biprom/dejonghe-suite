@@ -111,7 +111,7 @@ public class SelectProductSubView extends VerticalLayout {
     Product selectedSet;
     Customer selectedCustomer;
 
-    Notification checkDoubleProductInSelectedProductListNotification;
+    Dialog checkDoubleProductInSelectedProductListNotification;
     Notification deleteProductNotification;
 
     UserFunction userFunction = UserFunction.ADMIN;
@@ -2131,10 +2131,9 @@ public class SelectProductSubView extends VerticalLayout {
         return closeBtn;
     }
 
-    private Notification createDoubleProductNotification() {
-        checkDoubleProductInSelectedProductListNotification = new Notification();
-        checkDoubleProductInSelectedProductListNotification.addThemeVariants(NotificationVariant.LUMO_WARNING);
-        checkDoubleProductInSelectedProductListNotification.setPosition(Notification.Position.MIDDLE);
+    private Dialog createDoubleProductNotification() {
+        checkDoubleProductInSelectedProductListNotification = new Dialog();
+        checkDoubleProductInSelectedProductListNotification.setCloseOnOutsideClick(false);
         Icon icon = VaadinIcon.WARNING.create();
         Button seperateButton = new Button("Voeg aantal apart in deze lijst",
                 clickEvent -> {

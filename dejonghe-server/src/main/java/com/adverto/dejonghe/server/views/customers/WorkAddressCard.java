@@ -733,7 +733,7 @@ public class WorkAddressCard extends Card {
         }
         else{
             //set Customername as workaddressname
-            this.workAddress.setAddressName(customer.getAddresses().stream().filter(y -> y.getInvoiceAddress() == true).findFirst().get().getCustomerName());
+            this.workAddress.setAddressName(customer.getAddresses().stream().filter(y -> (y.getInvoiceAddress() != null) && (y.getInvoiceAddress() == true)).findFirst().get().getCustomerName());
         }
 
 

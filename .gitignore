@@ -1,0 +1,4 @@
+# Project exclude paths
+/dejonghe-common/target/
+/dejonghe-server/target/
+/dejonghe-tablet/target/

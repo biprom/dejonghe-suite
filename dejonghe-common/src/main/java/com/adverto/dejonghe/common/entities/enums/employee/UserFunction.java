@@ -1,0 +1,16 @@
+package com.adverto.dejonghe.common.entities.enums.employee;
+
+public enum UserFunction {
+    ADMIN ("Administrator"),
+    TECHNICIAN   ("Technieker"),
+    WAREHOUSEWORKER("WarehouseWorker"),
+    MAKE_SETS   ("MakeSets"),;
+
+    private final String discription;
+
+    UserFunction(String discription) {
+        this.discription = discription;
+    }
+
+    public String getDiscription() { return discription; }
+}

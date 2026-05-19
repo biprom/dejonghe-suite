@@ -1,0 +1,112 @@
+package com.adverto.dejonghe.common.dbservices;
+
+import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrder;
+import com.adverto.dejonghe.common.entities.enums.workorder.WorkOrderStatus;
+import com.adverto.dejonghe.common.repos.WorkOrderRepo;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
+@Service
+public class WorkOrderService {
+    @Autowired
+    WorkOrderRepo workOrderRepo;
+
+    List<WorkOrder>workOrderList = new ArrayList<>();
+
+    public Optional<List<WorkOrder>> getAll() {
+        List<WorkOrder> workOrders = workOrderRepo.findAll();
+        if (!workOrders.isEmpty()) {
+            return Optional.of(workOrders);
+        }
+        else{
+            return Optional.empty();
+        }
+    }
+
+    public Optional<List<WorkOrder>> getAllFinished() {
+        List<WorkOrder> workOrders = workOrderRepo.findWorkOrderByWorkOrderStatus(WorkOrderStatus.FINISHED);
+        if (!workOrders.isEmpty()) {
+            return Optional.of(workOrders);
+        }
+        else{
+            return Optional.empty();
+        }
+    }
+
+    public Optional<List<WorkOrder>> getAllWorkOrdersByStatus(WorkOrderStatus status) {
+        List<WorkOrder> workOrders = workOrderRepo.findWorkOrderByWorkOrderStatus(status);
+        if (!workOrders.isEmpty()) {
+            return Optional.of(workOrders);
+        }
+        else{
+            return Optional.empty();
+        }
+    }
+
+    public Optional<WorkOrder> getWorkOrderById(String id) {
+        Optional<WorkOrder> optionalWorkOrder = workOrderRepo.findWorkOrderById(id);
+        return optionalWorkOrder;
+    }
+
+    public Optional<WorkOrder> getStarterByLinkedId(String linkedId) {
+        Optional<WorkOrder> optionalStarterWorkOrder = Optional.of(workOrderRepo.findWorkOrderByLinkedWorkOrdersContains(linkedId));
+        return optionalStarterWorkOrder;
+    }
+
+    public Optional<List<WorkOrder>> getAllByStatusAndStarter(WorkOrderStatus status, Boolean starter){
+        return Optional.of(workOrderRepo.findByWorkOrderStatusAndStarter(status,starter));
+    }
+
+    public void delete(WorkOrder workOrder) {
+        workOrderRepo.delete(workOrder);
+    }
+
+    public void deleteAll(Set<WorkOrder> workOrders) {
+        workOrderRepo.deleteAll(workOrders);
+    }
+
+    public String save(WorkOrder workOrder) {
+        WorkOrder save = workOrderRepo.save(workOrder);
+        return save.getId();
+    }
+
+    public Optional<List<WorkOrder>> getCoupledWorkOrders(List<String> linkedWorkOrders) {
+        if(linkedWorkOrders != null){
+            workOrderList.clear();
+            for (String linkedWorkOrder : linkedWorkOrders) {
+                Optional<WorkOrder> optionalWorkOrder = workOrderRepo.findWorkOrderById(linkedWorkOrder);
+                if (!optionalWorkOrder.isEmpty()) {
+                    workOrderList.add(optionalWorkOrder.get());
+                }
+            }
+        }
+        return Optional.of(workOrderList);
+    }
+
+    public List<WorkOrder> getWorkOrderListByStarterId(String starterId) {
+        workOrderList.clear();
+        Optional<WorkOrder> optStarter = workOrderRepo.findWorkOrderById(starterId);
+        if (optStarter.isPresent()) {
+            workOrderList.add(optStarter.get());
+        }
+        if((optStarter.isPresent()) && (optStarter.get().getLinkedWorkOrders() != null) && (!optStarter.get().getLinkedWorkOrders().isEmpty())) {
+            for(String id : optStarter.get().getLinkedWorkOrders()){
+                Optional<WorkOrder> optionalWorkOrder = workOrderRepo.findWorkOrderById(id);
+                if (optionalWorkOrder.isPresent()) {
+                    workOrderList.add(optionalWorkOrder.get());
+                }
+            }
+        }
+        return workOrderList;
+    }
+
+    public Optional<WorkOrder> getWorkOrderByWorkDateTime(LocalDateTime workDateTime) {
+        return Optional.of(workOrderRepo.findWorkOrderByWorkDateTime(workDateTime));
+    }
+}

@@ -47,8 +47,6 @@ public class SyncController {
     private final ProductService productService;
     private final WorkOrderService workOrderService;
 
-    public static final String ACCOUNT_SID = "AC0561c3be842c0adf1f10b35baab49bf9";
-    public static final String AUTH_TOKEN = "8a8efee7a1a301268eb5b623310abd95";
     private final ProductLevel1Service productLevel1Service;
     private final ProductLevel2Service productLevel2Service;
     private final ProductLevel3Service productLevel3Service;
@@ -207,23 +205,6 @@ public class SyncController {
                         "attachment; filename=tabletDemo-1.0-SNAPSHOT.jar"
                 )
                 .body(resource);
-    }
-
-    @PostMapping("/sendSmsService")
-    public ResponseEntity<Sms> sendSmsService(
-            @RequestBody Sms sms
-    ) {
-        System.out.println("SMS verstuurd naar : " + sms.getNumber() + " : " + sms.getMessage());
-        Twilio.init(ACCOUNT_SID, AUTH_TOKEN);
-        Message message = Message
-                .creator(
-                        new PhoneNumber(sms.getNumber()),
-                        new PhoneNumber("+17409963549"),
-                        sms.getMessage()
-                )
-                .create();
-        System.out.println(message.getSid());
-        return ResponseEntity.ok(sms);
     }
 
     @GetMapping("/productLevel1")

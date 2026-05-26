@@ -2108,7 +2108,12 @@ public class InvoiceServices {
                     .setScale(2, RoundingMode.HALF_UP)
                     .doubleValue();
 
-            return Optional.of(roundedTotalTax);
+            if(invoice.getCustomer().getVatNumber().contains("BE")){
+                return Optional.of(roundedTotalTax);
+            }
+            else{
+                return Optional.of(0.0);
+            }
         }
         return Optional.empty();
     }

@@ -115,8 +115,6 @@ public class MainLayout extends AppLayout {
 
         addToDrawer(logo,scroller);
         this.viewTitle.addClickListener(event -> {
-            Notification notification = new Notification("Hide navbar!!!");
-            notification.open();
             setDrawerOpened(false);
         });
     }

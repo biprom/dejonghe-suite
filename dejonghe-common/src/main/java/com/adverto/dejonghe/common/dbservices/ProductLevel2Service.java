@@ -138,4 +138,12 @@ public class ProductLevel2Service {
 
         return parts;
     }
+
+    public void removeAll() {
+        productLevel2Repo.deleteAll();
+    }
+
+    public void saveProductLevel2(ProductLevel2 productLevel2) {
+        productLevel2Repo.save(productLevel2);
+    }
 }

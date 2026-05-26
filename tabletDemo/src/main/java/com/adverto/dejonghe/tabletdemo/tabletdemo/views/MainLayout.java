@@ -1,5 +1,6 @@
 package com.adverto.dejonghe.tabletdemo.tabletdemo.views;
 
+import com.adverto.dejonghe.tabletdemo.tabletdemo.services.SyncService;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.views.articles.ImportArticleViewNieuw;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.views.customers.CustomerDashboardView;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.views.workorder.PendingWorkorderView;
@@ -28,6 +29,7 @@ import com.vaadin.flow.theme.lumo.Lumo;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.IOException;
 import java.text.DecimalFormatSymbols;
 import java.util.Locale;
 import java.util.Map;
@@ -45,6 +47,8 @@ public class MainLayout extends AppLayout {
     private HorizontalLayout navbar;
     private HorizontalLayout subMenusLayout;
 
+    private SyncService syncService;
+
     SideNav nav;
     DrawerToggle toggle;
 
@@ -52,7 +56,10 @@ public class MainLayout extends AppLayout {
     Map<Class<? extends Component>, String> navCustomer;
     Map<Class<? extends Component>, String> navWorkOrder;
 
-    public MainLayout() {
+    public MainLayout(SyncService syncService) {
+
+        this.syncService = syncService;
+
         UI.getCurrent().setLocale(new Locale("nl", "BE"));
         System.out.println("Default locale: " + Locale.getDefault());
         System.out.println("Language: " + Locale.getDefault().getLanguage());
@@ -98,6 +105,53 @@ public class MainLayout extends AppLayout {
 
     private void addDrawerContent() {
         Image logo = new Image("icons/img.png", "Logo");
+        logo.addClickListener(x -> {
+
+            Notification.show("Verzenden van alle afgewerkte werkbonnen naar de server");
+            try {
+                syncService.sendWorkOrders();
+            } catch (IOException e) {
+                Notification.show("Mislukt om de werkbonnen naar de server te verzenden");
+            }
+            Notification.show("Werkbonnen verzonden ");
+
+            Notification.show("Verwijderen van alle documenten en foto's");
+            syncService.deleteAllDocuments();
+            Notification.show("Verwijderen gelukt");
+
+            Notification.show("Synchronisatie van werkbonnen op de server");
+            try {
+                syncService.receiveWorkOrders();
+            } catch (IOException e) {
+                Notification.show("Synchronisatie van werkbonnen op de server niet gelukt");
+            }
+            Notification.show("Synchronisatie van werkbonnen op de server gelukt");
+
+
+            Notification.show("Synchronisatie Klanten gestart");
+            syncService.syncCustomersFromServer();
+            Notification.show("Synchronisatie Klanten beïndigd");
+
+
+            Notification.show("Synchronisatie Artikelen gestart");
+            syncService.syncProducts();
+            Notification.show("Synchronisatie Artikelen beïndigd");
+
+            Notification.show("Synchronisatie Artikelmappen gestart");
+            syncService.syncProductFolders1();
+            syncService.syncProductFolders2();
+            syncService.syncProductFolders3();
+            syncService.syncProductFolders4();
+            syncService.syncProductFolders5();
+            syncService.syncProductFolders6();
+            syncService.syncProductFolders7();
+            Notification.show("Synchronisatie Artikelmappen beïndigd");
+
+            Notification.show("Synchronisatie Personeel gestart");
+            syncService.syncEmployeesFromServer();
+            Notification.show("Synchronisatie Personeel beïndigd");
+
+        });
         logo.setHeight("100px");
 
 
@@ -107,8 +161,6 @@ public class MainLayout extends AppLayout {
 
         addToDrawer(logo,scroller);
         this.viewTitle.addClickListener(event -> {
-            Notification notification = new Notification("Hide navbar!!!");
-            notification.open();
             setDrawerOpened(false);
         });
     }
@@ -137,14 +189,6 @@ public class MainLayout extends AppLayout {
 
         nav.addItem(importProductLinkNieuw,customerLink,workOrderLink);
 
-//        List<MenuEntry> menuEntries = MenuConfiguration.getMenuEntries();
-//        menuEntries.forEach(entry -> {
-//            if (entry.icon() != null) {
-//                nav.addItem(new SideNavItem(entry.title(), entry.path(), new SvgIcon(entry.icon())));
-//            } else {
-//                nav.addItem(new SideNavItem(entry.title(), entry.path()));
-//            }
-//        });
         return nav;
     }
 
@@ -195,33 +239,6 @@ public class MainLayout extends AppLayout {
         return layout;
     }
 
-    private VerticalLayout createProformaMenuLayout(String title, Icon icon) {
-        VerticalLayout layout = new VerticalLayout();
-        layout.setAlignItems(FlexComponent.Alignment.CENTER);
-        layout.setSpacing(true);
-        layout.setPadding(true);
-        Icon cog = icon;
-        cog.setSize("32px");  // vergroot icon
-        Span label = new Span(title);
-        layout.add(cog, label);
-        viewTitle.setText("Proforma");
-        layout.addSingleClickListener(x -> updateNavbar(noNav));
-        return layout;
-    }
-
-    private VerticalLayout createInvoiceMenuLayout(String title, Icon icon) {
-        VerticalLayout layout = new VerticalLayout();
-        layout.setAlignItems(FlexComponent.Alignment.CENTER);
-        layout.setSpacing(true);
-        layout.setPadding(true);
-        Icon cog = icon;
-        cog.setSize("32px");  // vergroot icon
-        Span label = new Span(title);
-        layout.add(cog, label);
-        viewTitle.setText("Facturatie");
-        layout.addSingleClickListener(x -> updateNavbar(noNav));
-        return layout;
-    }
 
     private VerticalLayout createWorkOrderMenuLayout(String title, Icon icon) {
         VerticalLayout layout = new VerticalLayout();

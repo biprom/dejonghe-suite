@@ -438,7 +438,12 @@ public class CurrentInvoiceSubView extends VerticalLayout {
         Grid.Column<Invoice> columnCustomer = proFormaInvoiceGrid.addColumn(invoice -> {
             if(invoice.getCustomer() != null){
                 if((invoice.getCustomer().getBProjectCustomer()) && (invoice.getWorkAddress() != null)){
-                    return invoice.getCustomer().getName() + " (" + String.valueOf(invoice.getProjectWorkAddress().getAddressName()) + ")";
+                    try{
+                        return invoice.getCustomer().getName() + " (" + String.valueOf(invoice.getProjectWorkAddress().getAddressName()) + ")";
+                    }
+                    catch (Exception e){
+                        return invoice.getCustomer().getName();
+                    }
                 }
                 return invoice.getCustomer().getName();
             }

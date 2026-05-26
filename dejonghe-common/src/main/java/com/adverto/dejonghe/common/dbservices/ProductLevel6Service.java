@@ -128,4 +128,12 @@ public class ProductLevel6Service {
 
         return parts;
     }
+
+    public void removeAll() {
+        productLevel6Repo.deleteAll();
+    }
+
+    public void saveProductLevel6(ProductLevel6 productLevel6) {
+        productLevel6Repo.save(productLevel6);
+    }
 }

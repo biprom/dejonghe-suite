@@ -19,6 +19,14 @@ public class ProductLevel1Service {
     @Autowired
     ProductLevel1Repo productLevel1Repo;
 
+    public void removeAll() {
+        productLevel1Repo.deleteAll();
+    }
+
+    public void saveProductLevel1(ProductLevel1 productLevel1){
+        productLevel1Repo.save(productLevel1);
+    }
+
     public void saveProductlevelItems(List<String>stringList){
         for(String string : stringList){
             ProductLevel1 productLevel1 = new ProductLevel1();

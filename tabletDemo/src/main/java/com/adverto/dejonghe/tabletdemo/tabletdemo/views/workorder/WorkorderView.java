@@ -80,7 +80,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @PageTitle("Werkbon")
-@Route("werkbon")
+@Route("")
 @Menu(order = 0, icon = LineAwesomeIconUrl.WRENCH_SOLID)
 public class WorkorderView extends VerticalLayout implements HasUrlParameter<String> {
 

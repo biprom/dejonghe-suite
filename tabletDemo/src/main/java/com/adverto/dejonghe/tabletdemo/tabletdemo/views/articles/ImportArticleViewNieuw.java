@@ -62,7 +62,7 @@ import java.util.stream.Collectors;
 import static com.vaadin.flow.component.button.ButtonVariant.LUMO_TERTIARY_INLINE;
 
 @PageTitle("Artikelen")
-@Route("")
+@Route("artikelen")
 @Menu(order = 0, icon = LineAwesomeIconUrl.COG_SOLID)
 public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnterObserver {
 
@@ -164,8 +164,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
 
     NumberFormat df = NumberFormat.getNumberInstance(new Locale("nl", "BE"));
 
-    private Spreadsheet spreadsheet;
-
     private Binder<Product> productBinder;
     Editor<Product> editor;
 
@@ -255,7 +253,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         addDataToGrid();
         setUpBinder();
         setUpProductLevelComboBoxes();
-        setUpBulkDialog();
         setUpPurchasePricegrid();
         setUpPriceValueChangeListeners();
         setUpFilter();
@@ -684,267 +681,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         );
 
     }
-    
 
-    private void setUpBulkDialog() {
-        bulkDialog = new Dialog();
-        bulkDialog.setWidth("50%");
-        bulkDialog.addAttachListener(event -> {
-            importBulkLevelList.clear();
-            switch (selectedProductLevel){
-                case PRODUCT:
-                    bulkGrid.setVisible(false);
-                    break;
-                case PRODUCTLEVEL1:
-                    if(!productLevel1Service.getProductDiscriptionAndId().isEmpty()){
-                        bulkGrid.setItems(productLevel1Service.getProductDiscriptionAndId().get());
-                        bulkGrid.setVisible(true);
-                    }
-                    else{
-                        bulkGrid.setVisible(false);
-                    }
-                    break;
-                case PRODUCTLEVEL2:
-                    if(!productLevel2Service.getProductLevel2NamesAndId().isEmpty()){
-                        bulkGrid.setItems(productLevel2Service.getProductLevel2NamesAndId().get());
-                        bulkGrid.setVisible(true);
-                    }
-                    else{
-                        bulkGrid.setVisible(false);
-                    }
-                    break;
-                case PRODUCTLEVEL3:
-                    if(!productLevel3Service.getProductLevel3NamesAndLevelAndId().isEmpty()){
-                        bulkGrid.setItems(productLevel3Service.getProductLevel3NamesAndLevelAndId().get());
-                        bulkGrid.setVisible(true);
-                    }
-                    else{
-                        bulkGrid.setVisible(false);
-                    }
-                    break;
-                case PRODUCTLEVEL4:
-                    if(!productLevel4Service.getProductLevel4NamesAndLevelAndId().isEmpty()){
-                        bulkGrid.setItems(productLevel4Service.getProductLevel4NamesAndLevelAndId().get());
-                        bulkGrid.setVisible(true);
-                    }
-                    else{
-                        bulkGrid.setVisible(false);
-                    }
-                    break;
-                case PRODUCTLEVEL5:
-                    if(!productLevel5Service.getProductLevel5NamesAndLevelAndId().isEmpty()){
-                        bulkGrid.setItems(productLevel5Service.getProductLevel5NamesAndLevelAndId().get());
-                        bulkGrid.setVisible(true);
-                    }
-                    else{
-                        bulkGrid.setVisible(false);
-                    }
-                    break;
-                case PRODUCTLEVEL6:
-                    if(!productLevel6Service.getProductLevel6NamesAndLevelAndId().isEmpty()){
-                        bulkGrid.setItems(productLevel6Service.getProductLevel6NamesAndLevelAndId().get());
-                        bulkGrid.setVisible(true);
-                    }
-                    else{
-                        bulkGrid.setVisible(false);
-                    }
-                    break;
-                case PRODUCTLEVEL7:
-                    if(!productLevel7Service.getProductLevel7NamesAndLevelAndId().isEmpty()){
-                        bulkGrid.setItems(productLevel7Service.getProductLevel7NamesAndLevelAndId().get());
-                        bulkGrid.setVisible(true);
-                    }
-                    else{
-                        bulkGrid.setVisible(false);
-                    }
-                    break;
-            }
-        });
-        bulkDialog.setHeaderTitle(
-                String.format("Voeg Bulk toe"));
-        bulkDialog.add("Ben je zeker dat je meerdere artikelen wilt kopieren vanuit Excel?");
-        bulkDialog.add(spreadsheet);
-        bulkDialog.add(getItemGrid());
-        Button saveDialogButton = new Button("Bewaar", (e) -> {
-            importBulkLevelList.clear();
-            Set<CellReference> selectedCellReferences = spreadsheet.getSelectedCellReferences();
-
-            //fill importBulkLevelList with selected Items from excel to save in levels
-            if(!(selectedProductLevel == E_Product_Level.PRODUCT)){
-                selectedCellReferences.forEach(cellReference -> {
-                    importBulkLevelList.add(spreadsheet.getCell(cellReference).getStringCellValue());
-                });
-            }
-            //else add Products from excel- selection
-            else{
-                CellReference maxCelReference = selectedCellReferences.stream().min(Comparator.comparing(CellReference::getRow)).get();
-                int minRow = maxCelReference.getRow();
-                CellReference minCellReference = selectedCellReferences.stream().max(Comparator.comparing(CellReference::getRow)).get();
-                int maxRow = minCellReference.getRow();
-                int i = minRow;
-                while (i <= maxRow) {
-                    Product newProduct = new Product();
-                    newProduct.setLinked(false);
-                    if(cbProductLevel1.getValue() != null){
-                        newProduct.setProductLevel1(cbProductLevel1.getValue());
-                    }
-                    if(cbProductLevel2.getValue() != null){
-                        newProduct.setProductLevel2(cbProductLevel2.getValue());
-                    }
-                    if(cbProductLevel3.getValue() != null){
-                        newProduct.setProductLevel3(cbProductLevel3.getValue());
-                    }
-                    if(cbProductLevel4.getValue() != null){
-                        newProduct.setProductLevel4(cbProductLevel4.getValue());
-                    }
-                    if(cbProductLevel5.getValue() != null){
-                        newProduct.setProductLevel5(cbProductLevel5.getValue());
-                    }
-                    if(cbProductLevel6.getValue() != null){
-                        newProduct.setProductLevel6(cbProductLevel6.getValue());
-                    }
-                    if(cbProductLevel7.getValue() != null){
-                        newProduct.setProductLevel7(cbProductLevel7.getValue());
-                    }
-                    int finalI = i;
-                    selectedCellReferences.stream().filter(item -> (item.getRow() == finalI)&&(item.getCol() == 0)).findFirst().ifPresent(cellReference -> {
-                        newProduct.setProductCode(spreadsheet.getCell(cellReference).getStringCellValue());
-                    });
-                    selectedCellReferences.stream().filter(item -> (item.getRow() == finalI)&&(item.getCol() == 1)).findFirst().ifPresent(cellReference -> {
-                        newProduct.setPositionNumber(spreadsheet.getCell(cellReference).getStringCellValue());
-                    });
-                    selectedCellReferences.stream().filter(item -> (item.getRow() == finalI)&&(item.getCol() == 2)).findFirst().ifPresent(cellReference -> {
-                        newProduct.setInternalName(spreadsheet.getCell(cellReference).getStringCellValue());
-                    });
-                    selectedCellReferences.stream().filter(item -> (item.getRow() == finalI)&&(item.getCol() == 3)).findFirst().ifPresent(cellReference -> {
-                        newProduct.setUnit(spreadsheet.getCell(cellReference).getStringCellValue());
-                    });
-                    selectedCellReferences.stream().filter(item -> (item.getRow() == finalI)&&(item.getCol() == 4)).findFirst().ifPresent(cellReference -> {
-                        newProduct.setSellPrice(spreadsheet.getCell(cellReference).getNumericCellValue());
-                    });
-                    selectedCellReferences.stream().filter(item -> (item.getRow() == finalI)&&(item.getCol() == 5)).findFirst().ifPresent(cellReference -> {
-                        newProduct.setPurchasePrice(spreadsheet.getCell(cellReference).getNumericCellValue());
-                    });
-                    if((newProduct.getSellPrice() != null) && (newProduct.getPurchasePrice() != null)){
-                        newProduct.setSellMargin((newProduct.getSellPrice()/newProduct.getPurchasePrice()));
-                    }
-                    else{
-                        newProduct.setSellMargin(0.0);
-                        Notification.show("Kon geen marge berekenen op rij : " + finalI,5, Notification.Position.MIDDLE);
-                    }
-                    selectedCellReferences.stream().filter(item -> (item.getRow() == finalI)&&(item.getCol() == 8)).findFirst().ifPresent(cellReference -> {
-                        newProduct.setComment(spreadsheet.getCell(cellReference).getStringCellValue());
-                    });
-
-                    productService.save(newProduct);
-                    i++;
-                }
-                addItemsToGrid(productRepo.findAll());
-            }
-
-
-            switch (selectedProductLevel){
-                case PRODUCTLEVEL1:
-                    if(importBulkLevelList.size() > 0){
-                        productLevel1Service.saveProductlevelItems(importBulkLevelList);
-                        cbProductLevel1.setItems(productLevel1Service.getAllProductLevel1().get());
-                        cbProductLevel1.setItemLabelGenerator(x -> x.getName());
-                        cbProductLevel1.setEnabled(true);
-                    }
-                    break;
-                case PRODUCTLEVEL2:
-                    if(importBulkLevelList.size() > 0){
-                        if(cbProductLevel1.getValue() != null){
-                            productLevel2Service.saveProductlevelItems(importBulkLevelList, cbProductLevel1.getValue());
-                            cbProductLevel2.setItems(productLevel2Service.getProductLevel2sFromPreviousLevels(cbProductLevel1.getValue()).get());
-                            cbProductLevel2.setItemLabelGenerator(x -> x.getName());
-                            cbProductLevel2.setEnabled(true);
-                        }
-                        else{
-                            Notification.show("Gelieve eerst een een productlevel 1 te selecteren aub");
-                        }
-                    }
-                    break;
-                case PRODUCTLEVEL3:
-                    if(importBulkLevelList.size() > 0){
-                        if(cbProductLevel2.getValue() != null){
-                            productLevel3Service.saveProductlevelItems(importBulkLevelList, cbProductLevel2.getValue());
-                            cbProductLevel3.setItems(productLevel3Service.getProductLevel3sFromPreviousLevels(cbProductLevel2.getValue(),cbProductLevel1.getValue()).get());
-                            cbProductLevel3.setItemLabelGenerator(x -> x.getName());
-                            cbProductLevel3.setEnabled(true);
-                        }
-                        else{
-                            Notification.show("Gelieve eerst een een productlevel 1 te selecteren aub");
-                        }
-                    }
-                    break;
-                case PRODUCTLEVEL4:
-                    if(importBulkLevelList.size() > 0){
-                        if(cbProductLevel3.getValue() != null){
-                            productLevel4Service.saveProductlevelItems(importBulkLevelList, cbProductLevel3.getValue());
-                            cbProductLevel4.setItems(productLevel4Service.getProductLevel4ByPreviousLevelNames(cbProductLevel3.getValue(),cbProductLevel2.getValue(),cbProductLevel1.getValue()).get());
-                            cbProductLevel4.setItemLabelGenerator(x -> x.getName());
-                            cbProductLevel4.setEnabled(true);
-                        }
-                        else{
-                            Notification.show("Gelieve eerst een een productlevel 1 te selecteren aub");
-                        }
-                    }
-                    break;
-                case PRODUCTLEVEL5:
-                    if(importBulkLevelList.size() > 0){
-                        if(cbProductLevel4.getValue() != null){
-                            productLevel5Service.saveProductlevelItems(importBulkLevelList, cbProductLevel4.getValue());
-                            cbProductLevel5.setItems(productLevel5Service.getProductLevel5ByPreviousLevelNames(cbProductLevel4.getValue(),cbProductLevel3.getValue(),cbProductLevel2.getValue(),cbProductLevel1.getValue()).get());
-                            cbProductLevel5.setItemLabelGenerator(x -> x.getName());
-                            cbProductLevel5.setEnabled(true);
-                        }
-                        else{
-                            Notification.show("Gelieve eerst een een productlevel 1 te selecteren aub");
-                        }
-                    }
-                    break;
-                case PRODUCTLEVEL6:
-                    if(importBulkLevelList.size() > 0){
-                        if(cbProductLevel5.getValue() != null){
-                            productLevel6Service.saveProductlevelItems(importBulkLevelList, cbProductLevel5.getValue());
-                            cbProductLevel6.setItems(productLevel6Service.getProductLevel6ByPreviousLevelNames(cbProductLevel5.getValue(),cbProductLevel4.getValue(),cbProductLevel3.getValue(),cbProductLevel2.getValue(),cbProductLevel1.getValue()).get());
-                            cbProductLevel6.setItemLabelGenerator(x -> x.getName());
-                            cbProductLevel6.setEnabled(true);
-                        }
-                        else{
-                            Notification.show("Gelieve eerst een een productlevel 1 te selecteren aub");
-                        }
-                    }
-                    break;
-                case PRODUCTLEVEL7:
-                    if(importBulkLevelList.size() > 0){
-                        if(cbProductLevel6.getValue() != null){
-                            productLevel7Service.saveProductlevelItems(importBulkLevelList, cbProductLevel6.getValue());
-                            cbProductLevel7.setItems(productLevel7Service.getProductLevel7ByPreviousLevelNames(cbProductLevel6.getValue(),cbProductLevel5.getValue(),cbProductLevel4.getValue(),cbProductLevel3.getValue(),cbProductLevel2.getValue(),cbProductLevel1.getValue()).get());
-                            cbProductLevel7.setItemLabelGenerator(x -> x.getName());
-                            cbProductLevel7.setEnabled(true);
-                        }
-                        else{
-                            Notification.show("Gelieve eerst een een productlevel 1 te selecteren aub");
-                        }
-                    }
-                    break;
-            }
-            importBulkLevelList.clear();
-            bulkDialog.close();
-        });
-        saveDialogButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY,
-                ButtonVariant.LUMO_SUCCESS);
-        saveDialogButton.getStyle().set("margin-right", "auto");
-        bulkDialog.getFooter().add(saveDialogButton);
-
-        Button cancelDialogButton = new Button("Annuleer", (e) -> {
-            bulkDialog.close();
-        });
-        cancelDialogButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
-        bulkDialog.getFooter().add(cancelDialogButton);
-    }
 
     private Grid getItemGrid() {
         bulkGrid.removeAllColumns();

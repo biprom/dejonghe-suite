@@ -63,8 +63,8 @@ import static com.vaadin.flow.component.button.ButtonVariant.LUMO_TERTIARY_INLIN
 public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnterObserver {
 
     //@Value( "${linkSpreadsheetBulk}" )
-    private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("/Users/bramvandenberghe/Desktop/dejonghe.xlsx");
-    //private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("D:\\Algemeen\\Documentatie\\Dejonghe-techniek\\Database\\dejonghe.xlsx\\dejonghe.xlsx");
+    //private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("/Users/bramvandenberghe/Desktop/dejonghe.xlsx");
+    private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("D:\\Algemeen\\Documentatie\\Dejonghe-techniek\\Database\\dejonghe.xlsx\\dejonghe.xlsx");
 
     Notification deleteProductNotification;
 
@@ -242,7 +242,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         setUpPdfDialog();
         setUpSetSimpleDialog();
         createReportError();
-        setUpSpreadSheet();
+        //setUpSpreadSheet();
 
         this.getStyle()
                 .set("display", "flex")
@@ -1038,7 +1038,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         bulkDialog.setHeaderTitle(
                 String.format("Voeg Bulk toe"));
         bulkDialog.add("Ben je zeker dat je meerdere artikelen wilt kopieren vanuit Excel?");
-        bulkDialog.add(spreadsheet);
+        //bulkDialog.add(spreadsheet);
         bulkDialog.add(getItemGrid());
         Button saveDialogButton = new Button("Bewaar", (e) -> {
             importBulkLevelList.clear();

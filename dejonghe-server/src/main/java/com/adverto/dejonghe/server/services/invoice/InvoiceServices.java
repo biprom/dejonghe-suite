@@ -1,5 +1,7 @@
 package com.adverto.dejonghe.server.services.invoice;
 
+import com.adverto.dejonghe.common.dbservices.DeviceService;
+import com.adverto.dejonghe.common.entities.installation.Device;
 import com.adverto.dejonghe.server.Controllers.BillitController;
 import com.adverto.dejonghe.server.Controllers.PdfController;
 import com.adverto.dejonghe.server.DTO.billitDto.AddressDTO;
@@ -23,7 +25,7 @@ import com.adverto.dejonghe.common.entities.enums.workorder.WorkLocation;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkType;
 import com.adverto.dejonghe.common.entities.invoice.Invoice;
 import com.adverto.dejonghe.common.entities.product.product.Product;
-import com.adverto.dejonghe.server.implementations.DataImplementation;
+import com.adverto.dejonghe.common.implementations.ProductImplementation;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.notification.Notification;
@@ -66,6 +68,8 @@ public class InvoiceServices {
     PdfController pdfController;
     @Autowired
     BillitController billitController;
+    @Autowired
+    DeviceService deviceService;
 
     @Value("${rootTemplateProforma}")
     FileSystemResource proformaResourceJRXML;
@@ -211,6 +215,32 @@ public class InvoiceServices {
         return parts;
     }
 
+    private List<String> splitText(String text, int maxLength) {
+        List<String> result = new ArrayList<>();
+
+        for (String line : text.split("\\R")) {
+            String remaining = line.trim();
+
+            while (remaining.length() > maxLength) {
+                int splitPos = remaining.lastIndexOf(' ', maxLength);
+
+                // Geen spatie gevonden? Hard afkappen op maxLength
+                if (splitPos <= 0) {
+                    splitPos = maxLength;
+                }
+
+                result.add(remaining.substring(0, splitPos).trim());
+                remaining = remaining.substring(splitPos).trim();
+            }
+
+            if (!remaining.isEmpty()) {
+                result.add(remaining);
+            }
+        }
+
+        return result;
+    }
+
     public Invoice generateMergedInvoice(Set<WorkOrder> workOrderSet){
         Invoice invoice = new Invoice();
         invoice.setInvoiceNumber(getNewProFormaInvoiceNumber());
@@ -253,23 +283,25 @@ public class InvoiceServices {
             List<Product> allProducts = new ArrayList<>();
 
             //get comment of first WorkOrder and add it as comment
-            workOrderSet.stream().forEach(workOrder -> {
-                try{
+            workOrderSet.forEach(workOrder -> {
+                try {
                     String comment = workOrder.getWorkOrderHeaderList().getFirst().getDescription();
-                    if (comment != null && !comment.isEmpty()){
-                        List<String> commentRowList = Arrays.stream(comment.split("\\R")).toList();
-                        for (int i = 0; i < commentRowList.size(); i++){
+
+                    if (comment != null && !comment.isBlank()) {
+
+                        List<String> commentRowList = splitText(comment, 90);
+
+                        for (String row : commentRowList) {
                             Product newProduct = new Product();
                             newProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                            newProduct.setInternalName(commentRowList.get(i));
+                            newProduct.setInternalName(row);
                             newProduct.setTeamNumber(0);
                             newProduct.setBComment(true);
                             allProducts.add(newProduct);
                         }
                     }
-                }
-                catch (Exception e){
-                    Notification.show("De starter bevat geen commentaar voor op de proforma! ");
+                } catch (Exception e) {
+                    Notification.show("De starter bevat geen commentaar voor op de proforma!");
                 }
             });
 
@@ -858,21 +890,26 @@ public class InvoiceServices {
 
                 //generate Comments/Products per day
                 //place comment first
+
+
                 try {
                     String comment = workOrder.getWorkOrderHeaderList().getFirst().getDescription();
-                    if (comment != null && !comment.isEmpty()) {
-                        List<String> commentRowList = Arrays.stream(comment.split("\\R")).toList();
-                        for (int i = 0; i < commentRowList.size(); i++) {
+
+                    if (comment != null && !comment.isBlank()) {
+
+                        List<String> commentRowList = splitText(comment, 90);
+
+                        for (String row : commentRowList) {
                             Product newProduct = new Product();
                             newProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                            newProduct.setInternalName(commentRowList.get(i));
+                            newProduct.setInternalName(row);
                             newProduct.setTeamNumber(0);
                             newProduct.setBComment(true);
                             allProducts.add(newProduct);
                         }
                     }
                 } catch (Exception e) {
-                    Notification.show("De starter bevat geen commentaar voor op de proforma! ");
+                    Notification.show("De starter bevat geen commentaar voor op de proforma!");
                 }
 
                 //retrieve selected Products
@@ -1669,9 +1706,9 @@ public class InvoiceServices {
         }
 
         Collections.reverse(products);
-        DataImplementation dataImplementation = new DataImplementation(products,invoice.getCustomer());
+        ProductImplementation productImplementation = new ProductImplementation(products,invoice.getCustomer());
 
-        parameters.put( "ItemDataSource", dataImplementation );
+        parameters.put( "ItemDataSource", productImplementation);
 
         Double totalPriceInvoice = invoice.getProductList().stream()
                 .filter(product -> product.getTotalPrice() != null)
@@ -1681,10 +1718,16 @@ public class InvoiceServices {
         parameters.put("netto", totalPriceInvoice);
 
         if(invoice.getCustomer().getVatNumber().contains("BE")){
-            parameters.put("btwBedrag",invoice.getProductList().stream()
+            double btwBedrag = invoice.getProductList().stream()
                     .filter(product -> product.getTotalPrice() != null)
-                    .mapToDouble(x -> (x.getTotalPrice() * x.getVat().getValue())/100)
-                    .sum());
+                    .mapToDouble(x -> (x.getTotalPrice() * x.getVat().getValue()) / 100)
+                    .sum();
+
+            btwBedrag = BigDecimal.valueOf(btwBedrag)
+                    .setScale(2, RoundingMode.HALF_UP)
+                    .doubleValue();
+
+            parameters.put("btwBedrag", btwBedrag);
         }
         else{
             parameters.put("btwBedrag",0.0);
@@ -1847,8 +1890,8 @@ public class InvoiceServices {
                     .doubleValue();
             product.setTotalPrice(roundedTotalPrice);
         }
-        DataImplementation dataImplementation = new DataImplementation(attachments,invoice.getCustomer());
-        parameters.put( "ItemDataSource", dataImplementation );
+        ProductImplementation productImplementation = new ProductImplementation(attachments,invoice.getCustomer());
+        parameters.put( "ItemDataSource", productImplementation);
 
         try {
             jasperPrintAttachement  = JasperFillManager.fillReport(jasperReportAttachement, parameters, new JREmptyDataSource(  ));
@@ -2284,6 +2327,56 @@ public class InvoiceServices {
         return invoiceDTO;
     }
 
+    public void checkZeroPositionsAndSaveThemToWorkAddress(Invoice selectedInvoice){
+        if(selectedInvoice.getProductList()!= null && selectedInvoice.getProductList().size() > 0){
+            selectedInvoice.getProductList().stream().filter(x -> (x.getPositionNumber() != null) && (x.getPositionNumber().matches("0"))).collect(Collectors.toList()).forEach(x -> {
+                Optional<List<Customer>> customerByWorkAddress = customerService.getCustomerByWorkAddress(selectedInvoice.getWorkAddress());
+                if(customerByWorkAddress.isPresent() && customerByWorkAddress.get().size() > 0){
+                    customerByWorkAddress.get().getFirst().getAddresses().stream().filter(address -> (address.getAddressName() != null) && (address.getAddressName().matches(selectedInvoice.getWorkAddress().getAddressName()))).collect(Collectors.toList()).forEach(address -> {
+                        for(int i = 0 ; i < x.getSelectedAmount().intValue(); i++){
+                            Device device = new Device();
+                            device.setDeviceName(x.getInternalName());
+                            device.setCode(x.getProductCode());
+                            device.setInvoiceNumber(String.valueOf(selectedInvoice.getFinalInvoiceNumber()));
+                            device.setDate(selectedInvoice.getInvoiceDate());
+                            String level2 = x.getProductLevel2().getName();
+                            if(level2.matches("Separatietechnieken")){
+                                device.setType(x.getProductLevel3().getName());
+                            }
+                            else{
+                                device.setType(level2);
+                            }
+                            String id = deviceService.save(device);
+
+                            if (address.getCoupledDeviceList() == null) {
+                                address.setCoupledDeviceList(new ArrayList<>());
+                            }
+
+                            address.getCoupledDeviceList().add(id);
+
+                            customerService.save(customerByWorkAddress.get().getFirst());
+                        }
+                    });
+                }
+                else{
+                    Notification.show("Geen klant gevonden met de naam van het werfadres!");
+                }
+            });
+        }
+    }
+
+    public void addReminder(Invoice invoice) {
+        if (invoice.getReminderLevel() < 3) {
+            invoice.setReminderLevel(invoice.getReminderLevel() + 1);
+        }
+    }
+
+    public void removeReminder(Invoice invoice) {
+        if (invoice.getReminderLevel() > 0) {
+            invoice.setReminderLevel(invoice.getReminderLevel() - 1);
+        }
+    }
+
     public String getBase64PdfInvoice() {
         return base64PdfInvoice;
     }
@@ -2291,4 +2384,5 @@ public class InvoiceServices {
     public String getBase64PdfAttachement() {
         return base64PdfAttachement;
     }
+
 }

@@ -36,6 +36,7 @@ import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationException;
 import com.vaadin.flow.router.QueryParameters;
 import com.vaadin.flow.router.RouterLink;
+import org.checkerframework.checker.units.qual.C;
 
 import java.text.NumberFormat;
 import java.time.LocalDate;
@@ -48,7 +49,7 @@ public class InvoiceCard extends Card {
 
     Customer customer;
     Address invoiceAddress;
-    Contact contact;
+    Contact contact = new Contact();
 
     CustomerService customerService;
     InvoiceService invoiceService;

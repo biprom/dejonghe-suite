@@ -70,9 +70,9 @@ public class WorkAddressCard extends Card {
     TextField tfCoordinates;
     TextField tfDistance;
 
-    TextField tfRoadTaxAtego;
-    TextField tfRoadTaxActros;
-    TextField tfRoadArocs;
+//    TextField tfRoadTaxAtego;
+//    TextField tfRoadTaxActros;
+//    TextField tfRoadArocs;
 
     public WorkAddressCard() {
 
@@ -150,12 +150,12 @@ public class WorkAddressCard extends Card {
         cityField = new TextField("stad");
         countryField = new TextField("land");
 
-        tfRoadTaxAtego = new TextField("Wegentaks Atego");
-        tfRoadTaxAtego.setSuffixComponent(new Span("€"));
-        tfRoadArocs = new TextField("Wegentaks Arocs");
-        tfRoadArocs.setSuffixComponent(new Span("€"));
-        tfRoadTaxActros = new TextField("Wegentaks Actros");
-        tfRoadTaxActros.setSuffixComponent(new Span("€"));
+//        tfRoadTaxAtego = new TextField("Wegentaks Atego");
+//        tfRoadTaxAtego.setSuffixComponent(new Span("€"));
+//        tfRoadArocs = new TextField("Wegentaks Arocs");
+//        tfRoadArocs.setSuffixComponent(new Span("€"));
+//        tfRoadTaxActros = new TextField("Wegentaks Actros");
+//        tfRoadTaxActros.setSuffixComponent(new Span("€"));
 
         HorizontalLayout coordinatesLayout = new HorizontalLayout();
         coordinatesLayout.setSpacing(true);
@@ -176,7 +176,7 @@ public class WorkAddressCard extends Card {
 
 
         VerticalLayout dialogLayout = new VerticalLayout(nameField,
-                streetField,zipField,cityField,countryField,coordinatesLayout,distanceLayout,tfRoadTaxAtego,tfRoadTaxActros,tfRoadArocs);
+                streetField,zipField,cityField,countryField,coordinatesLayout,distanceLayout);
         dialogLayout.setPadding(false);
         dialogLayout.setSpacing(false);
         dialogLayout.setAlignItems(FlexComponent.Alignment.STRETCH);
@@ -229,24 +229,24 @@ public class WorkAddressCard extends Card {
                         new StringToDoubleConverter("Afstand moet een decimaal getal zijn")
                 )
                 .bind(Address::getDistance, Address::setDistance);
-        addressBinder.forField(tfRoadTaxAtego)
-                .withNullRepresentation("")
-                .withConverter(
-                        new StringToDoubleConverter("Afstand moet een decimaal getal zijn")
-                )
-                .bind(Address::getRoadTaxAtego, Address::setRoadTaxAtego);
-        addressBinder.forField(tfRoadArocs)
-                .withNullRepresentation("")
-                .withConverter(
-                        new StringToDoubleConverter("Afstand moet een decimaal getal zijn")
-                )
-                .bind(Address::getRoadTaxArocs, Address::setRoadTaxArocs);
-        addressBinder.forField(tfRoadTaxActros)
-                .withNullRepresentation("")
-                .withConverter(
-                        new StringToDoubleConverter("Afstand moet een decimaal getal zijn")
-                )
-                .bind(Address::getRoadTaxActros, Address::setRoadTaxActros);
+//        addressBinder.forField(tfRoadTaxAtego)
+//                .withNullRepresentation("")
+//                .withConverter(
+//                        new StringToDoubleConverter("Afstand moet een decimaal getal zijn")
+//                )
+//                .bind(Address::getRoadTaxAtego, Address::setRoadTaxAtego);
+//        addressBinder.forField(tfRoadArocs)
+//                .withNullRepresentation("")
+//                .withConverter(
+//                        new StringToDoubleConverter("Afstand moet een decimaal getal zijn")
+//                )
+//                .bind(Address::getRoadTaxArocs, Address::setRoadTaxArocs);
+//        addressBinder.forField(tfRoadTaxActros)
+//                .withNullRepresentation("")
+//                .withConverter(
+//                        new StringToDoubleConverter("Afstand moet een decimaal getal zijn")
+//                )
+//                .bind(Address::getRoadTaxActros, Address::setRoadTaxActros);
         addressBinder.addValueChangeListener(x -> {
             try {
                 addressBinder.writeBean(workAddress);
@@ -502,9 +502,9 @@ public class WorkAddressCard extends Card {
         //transportLayout.add(new Span("Breedtegraad : " + (workAddress.getCoordinates() != null ? workAddress.getCoordinates().getLatitude() : 0)));
         //transportLayout.add(new Span("Lengtegraad : " + (workAddress.getCoordinates() != null ? workAddress.getCoordinates().getLongitude() : 0)));
         transportLayout.add(new Span("\u00A0"));
-        transportLayout.add(new Span("Wegentaks Atego : " + (workAddress.getRoadTaxAtego() != null ? workAddress.getRoadTaxAtego() : 0.0) + " €"));
-        transportLayout.add(new Span("Wegentaks Arocs : " + (workAddress.getRoadTaxArocs() != null ? workAddress.getRoadTaxArocs() : 0.0) + " €"));
-        transportLayout.add(new Span("Wegentaks Actros : " + (workAddress.getRoadTaxActros() != null ? workAddress.getRoadTaxActros() : 0.0) + " €"));
+//        transportLayout.add(new Span("Wegentaks Atego : " + (workAddress.getRoadTaxAtego() != null ? workAddress.getRoadTaxAtego() : 0.0) + " €"));
+//        transportLayout.add(new Span("Wegentaks Arocs : " + (workAddress.getRoadTaxArocs() != null ? workAddress.getRoadTaxArocs() : 0.0) + " €"));
+//        transportLayout.add(new Span("Wegentaks Actros : " + (workAddress.getRoadTaxActros() != null ? workAddress.getRoadTaxActros() : 0.0) + " €"));
         this.add(transportLayout);
 
         this.add(getActionMenu());
@@ -524,9 +524,9 @@ public class WorkAddressCard extends Card {
         actionBar.addThemeVariants(MenuBarVariant.LUMO_DROPDOWN_INDICATORS);
         MenuItem actie = actionBar.addItem("Actie");
         actie.getElement().getClassList().add("menu-as-button");
-        actie.getSubMenu().addItem("Pas aan werfadres", editWorkAddress());
-        actie.getSubMenu().addItem("Wijzig contactpersonen", editWorkAddressContacts());
-        actie.getSubMenu().addItem("Maak werkbon", generateWorkOrder());
+        //actie.getSubMenu().addItem("Pas aan werfadres", editWorkAddress());
+        //actie.getSubMenu().addItem("Wijzig contactpersonen", editWorkAddressContacts());
+        //actie.getSubMenu().addItem("Maak werkbon", generateWorkOrder());
 
         actionVLayout.add(actionBar);
 

@@ -1,7 +1,7 @@
 package com.adverto.dejonghe.server.views.subViews;
 
+import com.adverto.dejonghe.common.entities.customers.Address;
 import com.adverto.dejonghe.server.customEvents.GetSelectedWorkOrderEvent;
-import com.adverto.dejonghe.server.customEvents.ReloadProductListEvent;
 import com.adverto.dejonghe.common.dbservices.WorkOrderService;
 import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrder;
 import com.adverto.dejonghe.common.entities.enums.employee.UserFunction;
@@ -116,26 +116,34 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
         });
 
         filterName.addValueChangeListener(event -> {
-            if(event.getValue().length() >= 0){
-                workorderViewState.setCustomer(filterName.getValue());
-                try{
-                    List<WorkOrder> collect = selectedWorkOrders.stream().filter(filter -> (filter.getWorkAddress().getAddressName().toLowerCase().contains(event.getValue().toLowerCase())) ||
-                            (filter.getWorkAddress().getCity().toLowerCase().contains(event.getValue().toLowerCase())) ||
-                            (filter.getWorkAddress().getStreet().toLowerCase().contains(event.getValue().toLowerCase()))||
-                            (filter.getWorkAddress().getCustomerName().toLowerCase().contains(event.getValue().toLowerCase()))).collect(Collectors.toList());
-                    addItemsToPendingWorkOrderGridFromFilter(collect);
-                    pendingWorkOrdersGrid.getDataProvider().refreshAll();
-                }
-                catch (Exception e){
-                    addItemsToPendingWorkOrderGrid(selectedWorkOrders);
-                    pendingWorkOrdersGrid.getDataProvider().refreshAll();
-                }
-            }
-            else{
+            String search = event.getValue();
+
+            if (!search.isBlank()) {
+                String searchLower = search.toLowerCase();
+
+                List<WorkOrder> collect = selectedWorkOrders.stream()
+                        .filter(workOrder -> {
+                            Address address = workOrder.getWorkAddress();
+
+                            return address != null &&
+                                    (containsIgnoreCase(address.getAddressName(), searchLower)
+                                            || containsIgnoreCase(address.getCity(), searchLower)
+                                            || containsIgnoreCase(address.getStreet(), searchLower)
+                                            || containsIgnoreCase(address.getCustomerName(), searchLower));
+                        })
+                        .toList();
+
+                addItemsToPendingWorkOrderGridFromFilter(collect);
+            } else {
                 addItemsToPendingWorkOrderGrid(selectedWorkOrders);
-                pendingWorkOrdersGrid.getDataProvider().refreshAll();
             }
+
+            pendingWorkOrdersGrid.getDataProvider().refreshAll();
         });
+    }
+
+    private boolean containsIgnoreCase(String value, String search) {
+        return value != null && value.toLowerCase().contains(search);
     }
 
     private Grid<WorkOrder> setUpGrid() {
@@ -147,10 +155,14 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
         pendingWorkOrdersGrid.addThemeVariants(GridVariant.LUMO_COLUMN_BORDERS);
         pendingWorkOrdersGrid.setSelectionMode(TreeGrid.SelectionMode.MULTI);
         Grid.Column<WorkOrder> columnAddress = pendingWorkOrdersGrid.addHierarchyColumn(workOrder -> workOrder.getWorkAddress().getAddressName()).setHeader("Naam").setFlexGrow(2);
-        Grid.Column<WorkOrder> dateColum = pendingWorkOrdersGrid.addColumn(workorder -> workorder.getWorkDateTime().toLocalDate().format(
-                        DateTimeFormatter.ofPattern("dd/MM/yyyy")
-                ))
-                .setHeader("Datum").setSortable(true).setFlexGrow(1);
+        Grid.Column<WorkOrder> dateColumn = pendingWorkOrdersGrid
+                .addColumn(workorder -> workorder.getWorkDateTime()
+                        .toLocalDate()
+                        .format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))
+                .setHeader("Datum")
+                .setSortable(true)
+                .setComparator(workorder -> workorder.getWorkDateTime().toLocalDate())
+                .setFlexGrow(1);
         Grid.Column<WorkOrder> columnSubject = pendingWorkOrdersGrid.addColumn(workOrder -> {
             return getWorkOrderDiscriptions(workOrder);
         }).setHeader("Omschrijving").setFlexGrow(7);
@@ -196,7 +208,7 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
             }
         });
 
-        pendingWorkOrdersGrid.sort(GridSortOrder.desc(dateColum).build());
+        pendingWorkOrdersGrid.sort(GridSortOrder.desc(dateColumn).build());
         headerRow = pendingWorkOrdersGrid.appendHeaderRow();
         headerRow.getCell(columnAddress).setComponent(filterName);
         headerRow.getCell(columnSubject).setComponent(filterSubject);
@@ -336,57 +348,38 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
     public Button createDetachBtn(Notification notification) {
         Button connectBtn = new Button(VaadinIcon.CONNECT.create(),
                 clickEvent -> {
-                    if((selectedWorkOrder.getStarter() != null) && (selectedWorkOrder.getStarter() == true)){
-                        List<WorkOrder> workOrderListByStarterId = workOrderService.getWorkOrderListByStarterId(selectedWorkOrder.getId());
-                        WorkOrder starter = workOrderListByStarterId.stream().filter(workOrder -> workOrder.getStarter() == true).findFirst().get();
-                        List<String> linkedWorkOrders = starter.getLinkedWorkOrders();
-                        if(linkedWorkOrders != null && !linkedWorkOrders.isEmpty()){
-                            //this is a coupled starter
-                            Optional<WorkOrder> optFirstCoupledWorkOrder = workOrderService.getWorkOrderById(starter.getLinkedWorkOrders().get(0));
-                            if(optFirstCoupledWorkOrder.isPresent()){
-                                starter.getLinkedWorkOrders().remove(0);
-                                optFirstCoupledWorkOrder.get().setLinkedWorkOrders(starter.getLinkedWorkOrders());
-                                optFirstCoupledWorkOrder.get().setStarter(true);
-                                workOrderService.save(starter);
-                                workOrderService.save(optFirstCoupledWorkOrder.get());
-                                eventPublisher.publishEvent(new ReloadProductListEvent(this,"message"));
-                                addItemsToPendingWorkOrderGrid(selectedWorkOrders);
-                                pendingWorkOrdersGrid.getDataProvider().refreshAll();
+                    if(!pendingWorkOrdersGrid.getSelectedItems().isEmpty()){
+                        for(WorkOrder workOrder : pendingWorkOrdersGrid.getSelectedItems()){
+                            List<String> copyList = new ArrayList<>(workOrder.getLinkedWorkOrders()); // Kopie voor veilige verwijdering
 
+                            //if there are linked workorders remove them from list and set them as starter.
+                            for (String linkedWorkOrderId : copyList) {
+                                Optional<WorkOrder> optLinkedWorkOrder = workOrderService.getWorkOrderById(linkedWorkOrderId);
+                                if (optLinkedWorkOrder.isPresent()) {
+                                    optLinkedWorkOrder.get().setStarter(true);
+                                    workOrderService.save(optLinkedWorkOrder.get());
+                                }
+
+                                workOrder.getLinkedWorkOrders().remove(linkedWorkOrderId);
                             }
-                            else{
-                                Notification show = Notification.show("Geen gekoppelde werkbon gevonden!");
-                                show.addThemeVariants(NotificationVariant.LUMO_ERROR);
+                            workOrder.setStarter(true);
+                            workOrderService.save(workOrder);
+
+
+                            Optional<WorkOrder> starterByLinkedId = workOrderService.getStarterByLinkedId(workOrder.getId());
+                            if (starterByLinkedId.isPresent()) {
+                                WorkOrder starter = starterByLinkedId.get();
+                                if (starter.getLinkedWorkOrders() != null && !starter.getLinkedWorkOrders().isEmpty()) {
+                                    starter.getLinkedWorkOrders().remove(workOrder.getId());
+                                    workOrderService.save(starter);
+                                }
                             }
                         }
-                        else{
-                            //this is a standalone starter so it can not be detached!
-                            Notification show = Notification.show("Deze werkbon is niet gekoppeld en kan daardoor niet ontkoppeld worden!");
-                            show.addThemeVariants(NotificationVariant.LUMO_ERROR);
-
+                        notification.close();
+                        Optional<List<WorkOrder>>allFinishedStarters = workOrderService.getAllByStatusAndStarter(WorkOrderStatus.FINISHED, true);
+                        if(allFinishedStarters.isPresent()){
+                            addItemsToPendingWorkOrderGrid(allFinishedStarters.get());
                         }
-                    }
-                    else{
-                        Optional<WorkOrder> starterByLinkedId = workOrderService.getStarterByLinkedId(selectedWorkOrder.getId());
-                        if(starterByLinkedId.isPresent()){
-                            starterByLinkedId.get().getLinkedWorkOrders().remove(selectedWorkOrder.getId());
-                            workOrderService.save(starterByLinkedId.get());
-                            selectedWorkOrder.setStarter(true);
-                            workOrderService.save(selectedWorkOrder);
-                            eventPublisher.publishEvent(new ReloadProductListEvent(this,"message"));
-                            addItemsToPendingWorkOrderGrid(selectedWorkOrders);
-                            pendingWorkOrdersGrid.getDataProvider().refreshAll();
-                        }
-                        else{
-                            Notification show = Notification.show("Geen starter gevonden voor deze werkbon!");
-                            show.addThemeVariants(NotificationVariant.LUMO_ERROR);
-                        }
-
-                    }
-                    notification.close();
-                    Optional<List<WorkOrder>>allFinishedStarters = workOrderService.getAllByStatusAndStarter(WorkOrderStatus.FINISHED, true);
-                    if(allFinishedStarters.isPresent()){
-                        addItemsToPendingWorkOrderGrid(allFinishedStarters.get());
                     }
                 });
         connectBtn.addThemeVariants(LUMO_TERTIARY_INLINE);
@@ -471,13 +464,8 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
     }
 
     public void showDetachNotification() {
-        if(pendingWorkOrdersGrid.getSelectedItems().size() == 1){
-            selectedWorkOrder = pendingWorkOrdersGrid.getSelectedItems().stream().findFirst().get();
-            detachWorkorderNotification.open();
-        }
-        else{
-            Notification.show("Gelieve 1 werkbon te selecteren om te ontkoppelen");
-        }
+        selectedWorkOrder = pendingWorkOrdersGrid.getSelectedItems().stream().findFirst().get();
+        detachWorkorderNotification.open();
     }
 
     public void showRemoveNotification() {

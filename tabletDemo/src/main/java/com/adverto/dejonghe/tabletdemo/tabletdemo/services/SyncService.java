@@ -197,7 +197,7 @@ public class SyncService {
 
     //send workOrders to server
     public void sendWorkOrders() throws IOException {
-        Optional<List<WorkOrder>> allWorkOrders = workOrderService.getAll();
+        Optional<List<WorkOrder>> allWorkOrders = workOrderService.getAllFinished();
         if(allWorkOrders.isPresent() && allWorkOrders.get().size() > 0) {
             String url =
                     "http://192.168.1.90:8080/api/workOrderToServer";

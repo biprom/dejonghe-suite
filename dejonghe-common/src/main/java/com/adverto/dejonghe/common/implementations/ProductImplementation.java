@@ -1,4 +1,4 @@
-package com.adverto.dejonghe.server.implementations;
+package com.adverto.dejonghe.common.implementations;
 
 import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.product.product.Product;
@@ -11,7 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 
-public class DataImplementation implements JRDataSource {
+public class ProductImplementation implements JRDataSource {
 
 
     private int lastFiledAdded;
@@ -20,14 +20,17 @@ public class DataImplementation implements JRDataSource {
     Customer selectedCustomer;
     NumberFormat df = NumberFormat.getNumberInstance(new Locale("nl", "BE"));
 
-    public DataImplementation(List<Product>products, Customer selectedCustomer) {
+    public ProductImplementation(List<Product>products, Customer selectedCustomer) {
         setUpNumberFormat();
         this.products = products;
         this.selectedCustomer = selectedCustomer;
-
         lastFiledAdded = products.size() ;
-
-
+    }
+    public ProductImplementation(List<Product>products) {
+        setUpNumberFormat();
+        this.products = products;
+        this.selectedCustomer = null;
+        lastFiledAdded = products.size() ;
     }
 
     private void setUpNumberFormat() {
@@ -61,6 +64,9 @@ public class DataImplementation implements JRDataSource {
             }
 
         } else if (jrField.getName().equals("Omschrijving")) {
+            if((products.get(lastFiledAdded).getMergedProduct() != null) && ((products.get(lastFiledAdded).getMergedProduct() == true))){
+                return "  " + products.get(lastFiledAdded).getInternalName();
+            }
             return products.get(lastFiledAdded).getInternalName();
         } else if (jrField.getName().equals("Aantal")) {
             try{
@@ -76,7 +82,7 @@ public class DataImplementation implements JRDataSource {
             catch (Exception e){
                 return null;
             }
-        } else if (jrField.getName().equals("Eenheidsprijs")) {
+        } else if ((selectedCustomer != null) && (jrField.getName().equals("Eenheidsprijs"))) {
 
             try{
                 if(selectedCustomer.getBAgro()){
@@ -117,15 +123,18 @@ public class DataImplementation implements JRDataSource {
             catch (Exception e){
                 return "";
             }
-        } else if (jrField.getName().equals("Totaal")) {
+        } else if ((selectedCustomer != null) && (jrField.getName().equals("Totaal"))) {
             if(products.get(lastFiledAdded).getTotalPrice() != null){
-                if((products.get(lastFiledAdded).getBComment()) && (products.get(lastFiledAdded).getTotalPrice().equals(0.0))){
+                if((products.get(lastFiledAdded).getBComment())){
                     return null;
                 }
                 return products.get(lastFiledAdded).getTotalPrice();
             }
             return null;
-        } else if (jrField.getName().equals("btwStatus")) {
+        } else if ((selectedCustomer != null) && (jrField.getName().equals("btwStatus"))) {
+            if(products.get(lastFiledAdded).getBComment()){
+                return null;
+            }
             if(products.get(lastFiledAdded).getSelectedAmount() != null){
                 if(!products.get(lastFiledAdded).getSelectedAmount().equals(0.0)){
                     if(selectedCustomer.getVatNumber().contains("BE")){

@@ -414,7 +414,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
 
     private void setUpNumberFormat() {
         df.setMinimumFractionDigits(2);
-        df.setMaximumFractionDigits(2);
+        df.setMaximumFractionDigits(3);
         df.setGroupingUsed(true);
     }
 
@@ -926,6 +926,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 purchasePrice.setPurchaseDate(LocalDate.now());
                 selectedProduct.getPurchasePriseList().add(purchasePrice);
                 purchasePriceGrid.getDataProvider().refreshAll();
+                productService.save(selectedProduct);
             });
             return addButton;
         }).setAutoWidth(true).setFlexGrow(1).setFrozenToEnd(true);
@@ -936,6 +937,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
             addButton.addClickListener(e -> {
                 selectedProduct.getPurchasePriseList().remove(item);
                 purchasePriceGrid.getDataProvider().refreshAll();
+                productService.save(selectedProduct);
             });
             return addButton;
         }).setAutoWidth(true).setFlexGrow(1).setFrozenToEnd(true);

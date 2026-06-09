@@ -1,13 +1,13 @@
 package com.adverto.dejonghe.server.services.quote;
 
-import com.adverto.dejonghe.server.Controllers.PdfController;
 import com.adverto.dejonghe.common.dbservices.CustomerService;
 import com.adverto.dejonghe.common.dbservices.ProductService;
 import com.adverto.dejonghe.common.dbservices.QuoteService;
 import com.adverto.dejonghe.common.entities.customers.Address;
 import com.adverto.dejonghe.common.entities.product.product.Product;
 import com.adverto.dejonghe.common.entities.quote.Quote;
-import com.adverto.dejonghe.server.implementations.DataImplementation;
+import com.adverto.dejonghe.common.implementations.ProductImplementation;
+import com.adverto.dejonghe.server.Controllers.PdfController;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.notification.Notification;
@@ -340,9 +340,9 @@ public class QuoteServices {
         }
 
         Collections.reverse(products);
-        DataImplementation dataImplementation = new DataImplementation(products,quote.getCustomer());
+        ProductImplementation productImplementation = new ProductImplementation(products,quote.getCustomer());
 
-        parameters.put( "ItemDataSource", dataImplementation );
+        parameters.put( "ItemDataSource", productImplementation);
 
         Double totalPriceInvoice = quote.getProductList().stream()
                 .filter(product -> product.getTotalPrice() != null)
@@ -351,10 +351,15 @@ public class QuoteServices {
 
         parameters.put("netto", totalPriceInvoice);
 
-        parameters.put("btwBedrag",quote.getProductList().stream()
-                .filter(product -> product.getTotalPrice() != null)
-                .mapToDouble(x -> (x.getTotalPrice() * x.getVat().getValue())/100)
-                .sum());
+        if(quote.getCustomer().getVatNumber().contains("BE")) {
+            parameters.put("btwBedrag", quote.getProductList().stream()
+                    .filter(product -> product.getTotalPrice() != null)
+                    .mapToDouble(x -> (x.getTotalPrice() * x.getVat().getValue()) / 100)
+                    .sum());
+        }
+        else{
+            parameters.put("btwBedrag",0.0);
+        }
 
         try {
             jasperReport = JasperCompileManager.compileReport( quoteResourceJRXML.getInputStream() );
@@ -487,8 +492,8 @@ public class QuoteServices {
                     .doubleValue();
             product.setTotalPrice(roundedTotalPrice);
         }
-        DataImplementation dataImplementation = new DataImplementation(attachments,quote.getCustomer());
-        parameters.put( "ItemDataSource", dataImplementation );
+        ProductImplementation productImplementation = new ProductImplementation(attachments,quote.getCustomer());
+        parameters.put( "ItemDataSource", productImplementation);
 
         try {
             jasperPrintAttachement  = JasperFillManager.fillReport(jasperReportAttachement, parameters, new JREmptyDataSource(  ));

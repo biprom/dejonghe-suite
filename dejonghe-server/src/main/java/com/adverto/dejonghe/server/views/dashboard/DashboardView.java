@@ -180,7 +180,7 @@ public class DashboardView extends VerticalLayout {
 
     private GanttSeries createProjectDevelopmentSeries() {
         series = new GanttSeries();
-        series.setName("Project 1");
+        series.setName("Personeel");
 
         GanttSeriesItem item;
 

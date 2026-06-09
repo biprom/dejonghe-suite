@@ -44,7 +44,7 @@ public class EmployeeCard extends Card {
 
         this.getStyle().set("background-color", "#fbf6ea");
 
-        Div title = new Div(employee.getFirstName() + " " + employee.getLastName() + " " + employee.getAbbreviation());
+        Div title = new Div(employee.getFirstName() + " " + employee.getLastName());
         title.addClassName("card-title");
         this.setTitle(title);
 

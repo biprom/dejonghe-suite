@@ -151,11 +151,18 @@ public class SyncController {
                                         file.getContentType())
                         );
 
-        gridFSBucket.uploadFromStream(
-                new BsonObjectId(objectId),
-                file.getOriginalFilename(),
-                file.getInputStream()
-        );
+        try{
+            gridFSBucket.uploadFromStream(
+                    new BsonObjectId(objectId),
+                    file.getOriginalFilename(),
+                    file.getInputStream()
+            );
+        }
+        catch (Exception e){
+            return ResponseEntity.ok(
+                    new MediaUploadResponse(id)
+            );
+        }
 
         return ResponseEntity.ok(
                 new MediaUploadResponse(id)

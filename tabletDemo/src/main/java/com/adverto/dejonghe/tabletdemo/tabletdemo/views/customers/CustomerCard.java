@@ -111,8 +111,8 @@ public class CustomerCard extends Card {
         Div title = new Div(new Text(customer.getName()));
         title.addClassName("card-title");
         title.addSingleClickListener(event -> {
-            UI.getCurrent().navigate(
-                    CustomerView.class, customer.getId());
+//            UI.getCurrent().navigate(
+//                    CustomerView.class, customer.getId());
         });
         this.setTitle(title);
 
@@ -156,9 +156,9 @@ public class CustomerCard extends Card {
         actionBar.addThemeVariants(MenuBarVariant.LUMO_DROPDOWN_INDICATORS);
         MenuItem actie = actionBar.addItem("Actie");
         actie.getElement().getClassList().add("menu-as-button");
-        actie.getSubMenu().addItem("Open", openClickEvent());
+        //actie.getSubMenu().addItem("Open", openClickEvent());
         actie.getSubMenu().addItem("Lopende werkbonnen", getRunningWorkOrderOfCustomerClickEvent());
-        actie.getSubMenu().addItem("Verwijder", removeClickEvent());
+        //actie.getSubMenu().addItem("Verwijder", removeClickEvent());
         actionBarLayout.addToEnd(actionBar);
         return actionBarLayout;
     }

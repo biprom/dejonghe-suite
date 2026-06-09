@@ -55,9 +55,14 @@ public class WorkOrderService {
     }
 
     public Optional<WorkOrder> getStarterByLinkedId(String linkedId) {
-        Optional<WorkOrder> optionalStarterWorkOrder = Optional.of(workOrderRepo.findWorkOrderByLinkedWorkOrdersContains(linkedId));
-        return optionalStarterWorkOrder;
+        if (linkedId == null || linkedId.isEmpty()) {
+            throw new IllegalArgumentException("Linked ID mag niet null of leeg zijn.");
+        }
+
+        WorkOrder workOrder = workOrderRepo.findWorkOrderByLinkedWorkOrdersContains(linkedId);
+        return Optional.ofNullable(workOrder);
     }
+
 
     public Optional<List<WorkOrder>> getAllByStatusAndStarter(WorkOrderStatus status, Boolean starter){
         return Optional.of(workOrderRepo.findByWorkOrderStatusAndStarter(status,starter));

@@ -1,16 +1,16 @@
 package com.adverto.dejonghe.common.services;
 
-import com.adverto.dejonghe.common.entities.WorkOrder.BowlEntity;
-import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrder;
-import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrderHeader;
-import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrderTime;
+import com.adverto.dejonghe.common.entities.WorkOrder.*;
 import com.adverto.dejonghe.common.entities.enums.fleet.Fleet;
 import com.adverto.dejonghe.common.entities.enums.fleet.FleetWorkType;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkLocation;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkType;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import java.io.ByteArrayOutputStream;
+import java.util.*;
 
 @Service
 public class WorkOrderServices {
@@ -64,19 +64,19 @@ public class WorkOrderServices {
         if(workOrderHeader.getWorkType().equals(WorkType.CENTRIFUGE)){
             if((workOrderHeader.getBowlEntityList() != null) && (workOrderHeader.getBowlEntityList().size() > 0)){
                 for(BowlEntity bowlEntity : workOrderHeader.getBowlEntityList()){
-                    if((bowlEntity.getChassisNumber() == null) || (bowlEntity.getChassisNumber().isEmpty())){
+                    if((workLocation.equals(WorkLocation.ON_THE_MOVE)) && ((bowlEntity.getChassisNumber() == null) || (bowlEntity.getChassisNumber().isEmpty()))){
                         errorList.add(teamNumber + " Chassisnummer centrifuge is niet ingevuld!");
                     }
-                    if((bowlEntity.getWorkhours() == null)){
+                    if((workLocation.equals(WorkLocation.ON_THE_MOVE)) && (bowlEntity.getWorkhours() == null)){
                         errorList.add(teamNumber + " Draaiuren centrifuge is niet ingevuld!");
                     }
                     if((bowlEntity.getBBowlRemoved())){
-                        if((bowlEntity.getBowlRemovedNumber() == null) || (bowlEntity.getBowlRemovedNumber().isEmpty())){
+                        if((workLocation.equals(WorkLocation.ON_THE_MOVE)) && (bowlEntity.getBowlRemovedNumber() == null) || (bowlEntity.getBowlRemovedNumber().isEmpty())){
                             errorList.add(teamNumber + " Verwijderde Bowlnummer is niet ingevuld!");
                         }
                     }
                     if((bowlEntity.getBBowlReplaced())){
-                        if((bowlEntity.getBowlReplacedNumber() == null) || (bowlEntity.getBowlReplacedNumber().isEmpty())){
+                        if((workLocation.equals(WorkLocation.ON_THE_MOVE)) && (bowlEntity.getBowlReplacedNumber() == null) || (bowlEntity.getBowlReplacedNumber().isEmpty())){
                             errorList.add(teamNumber + " Teruggeplaatste Bowlnummer is niet ingevuld!");
                         }
                     }

@@ -79,8 +79,8 @@ public class CurrentQuoteSubView extends VerticalLayout {
     Grid.Column<Quote> columnProformaStatus;
     Grid.Column<Quote> columnFinalStatus;
     Grid.Column<Quote> totalNetColumn;
-    Grid.Column<Quote> totalVatColumn;
-    Grid.Column<Quote> totalAndVatColumn;
+    //Grid.Column<Quote> totalVatColumn;
+    //Grid.Column<Quote> totalAndVatColumn;
     Grid.Column<Quote> actionInvoiceColumn;
 
     ListDataProvider<Quote> dataProvider;
@@ -289,22 +289,22 @@ public class CurrentQuoteSubView extends VerticalLayout {
         totalNetColumn = quoteGrid.addColumn(quote -> {
             Optional<Double> amount = quoteServices.calcTotalNetFromQuote(quote);
             return "€ " + df.format(amount.get());
-        }).setHeader("Netto").setFlexGrow(2);
+        }).setHeader("Netto (excl BTW.)").setFlexGrow(2);
 
-        totalVatColumn = quoteGrid.addColumn(quote -> {
-            Optional<Double> vat = quoteServices.calcTotalTaxFromQuote(quote);
-            return "€ " + df.format(vat.get());
-        }).setHeader("BTW").setFlexGrow(2);
-
-        totalAndVatColumn = quoteGrid.addColumn(quote -> {
-            Optional<Double> amount = quoteServices.calcTotalNetFromQuote(quote);
-            Optional<Double> vat = quoteServices.calcTotalTaxFromQuote(quote);
-
-            if(amount.isPresent() && vat.isPresent()){
-                quote.setTotalAmountTempPlaceholder(amount.get()+vat.get());
-            }
-            return "€ " + df.format(quote.getTotalAmountTempPlaceholder());
-        }).setHeader("Totaal").setFlexGrow(2);
+//        totalVatColumn = quoteGrid.addColumn(quote -> {
+//            Optional<Double> vat = quoteServices.calcTotalTaxFromQuote(quote);
+//            return "€ " + df.format(vat.get());
+//        }).setHeader("BTW").setFlexGrow(2);
+//
+//        totalAndVatColumn = quoteGrid.addColumn(quote -> {
+//            Optional<Double> amount = quoteServices.calcTotalNetFromQuote(quote);
+//            Optional<Double> vat = quoteServices.calcTotalTaxFromQuote(quote);
+//
+//            if(amount.isPresent() && vat.isPresent()){
+//                quote.setTotalAmountTempPlaceholder(amount.get()+vat.get());
+//            }
+//            return "€ " + df.format(quote.getTotalAmountTempPlaceholder());
+//        }).setHeader("Totaal").setFlexGrow(2);
 
         columnProformaStatus = quoteGrid.addComponentColumn(item -> {
             if((item.getBApproved() != null) && (item.getBApproved() == true)){
@@ -755,8 +755,8 @@ public class CurrentQuoteSubView extends VerticalLayout {
     }
 
     public void refreshTotals(){
-        totalAndVatColumn.setFooter(String.valueOf("€ " + df.format(dataProvider.fetch(new Query<>()).mapToDouble(x -> (quoteServices.calcTotalNetFromQuote(x).get() + quoteServices.calcTotalTaxFromQuote(x).get())).sum())));
-        totalVatColumn.setFooter(String.valueOf("€ " + df.format(dataProvider.fetch(new Query<>()).mapToDouble(x -> quoteServices.calcTotalTaxFromQuote(x).get()).sum())));
+        //totalAndVatColumn.setFooter(String.valueOf("€ " + df.format(dataProvider.fetch(new Query<>()).mapToDouble(x -> (quoteServices.calcTotalNetFromQuote(x).get() + quoteServices.calcTotalTaxFromQuote(x).get())).sum())));
+        //totalVatColumn.setFooter(String.valueOf("€ " + df.format(dataProvider.fetch(new Query<>()).mapToDouble(x -> quoteServices.calcTotalTaxFromQuote(x).get()).sum())));
         totalNetColumn.setFooter(String.valueOf("€ " + df.format(dataProvider.fetch(new Query<>()).mapToDouble(x -> quoteServices.calcTotalNetFromQuote(x).get()).sum())));
     }
 
@@ -766,8 +766,8 @@ public class CurrentQuoteSubView extends VerticalLayout {
             dataProvider = new ListDataProvider<>(quoteList);
             quoteGrid.setDataProvider(dataProvider);
 
-            totalAndVatColumn.setFooter(String.valueOf("€ " + df.format(dataProvider.getItems().stream().mapToDouble(x -> (quoteServices.calcTotalNetFromQuote(x).get() + quoteServices.calcTotalTaxFromQuote(x).get())).sum())));
-            totalVatColumn.setFooter(String.valueOf("€ " + df.format(dataProvider.getItems().stream().mapToDouble(x -> quoteServices.calcTotalTaxFromQuote(x).get()).sum())));
+            //totalAndVatColumn.setFooter(String.valueOf("€ " + df.format(dataProvider.getItems().stream().mapToDouble(x -> (quoteServices.calcTotalNetFromQuote(x).get() + quoteServices.calcTotalTaxFromQuote(x).get())).sum())));
+            //totalVatColumn.setFooter(String.valueOf("€ " + df.format(dataProvider.getItems().stream().mapToDouble(x -> quoteServices.calcTotalTaxFromQuote(x).get()).sum())));
             totalNetColumn.setFooter(String.valueOf("€ " + df.format(dataProvider.getItems().stream().mapToDouble(x -> quoteServices.calcTotalNetFromQuote(x).get()).sum())));
         }
         else{

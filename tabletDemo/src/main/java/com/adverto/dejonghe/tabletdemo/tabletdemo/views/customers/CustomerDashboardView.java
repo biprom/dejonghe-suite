@@ -31,7 +31,7 @@ public class CustomerDashboardView extends VerticalLayout implements BeforeEnter
 
     TextField searchField;
     Optional<List<Customer>> customers;
-    VirtualList<List<Customer>> virtualList;
+    VirtualList<List<WorkAddressItem>> virtualList;
 
 
     public CustomerDashboardView(CustomerService customerService,
@@ -79,26 +79,44 @@ public class CustomerDashboardView extends VerticalLayout implements BeforeEnter
     }
 
     private void setGridLayout() {
-        List<List<Customer>> rows = chunk(customers.get(), 3);
-        virtualList = new VirtualList();
-        virtualList.setWidth("100%");
-        virtualList.setHeight("100%");
+        List<WorkAddressItem> workAddresses = customers.get().stream()
+                .flatMap(customer -> customer.getAddresses().stream()
+                        .filter(address -> address.getInvoiceAddress() == null || !address.getInvoiceAddress())
+                        .map(address -> new WorkAddressItem(customer, address))
+                )
+                .toList();
+
+        List<List<WorkAddressItem>> rows = chunk(workAddresses, 3);
+
+        virtualList = new VirtualList<>();
+        virtualList.setWidthFull();
+        virtualList.setHeightFull();
         virtualList.setItems(rows);
         virtualList.addClassName("my-virtual-list");
+
         virtualList.setRenderer(new ComponentRenderer<>(row -> {
             HorizontalLayout rowLayout = new HorizontalLayout();
             rowLayout.setWidthFull();
             rowLayout.setSpacing(true);
+            rowLayout.setPadding(false);
 
-            row.forEach(customer -> {
-                CustomerCard card = new CustomerCard(customer, invoiceService, customerService);
+            row.forEach(item -> {
+                WorkAddressCard card = new WorkAddressCard();
+                card.setWorkAddress(item.customer(), item.address());
+                card.setCustomerService(customerService);
                 card.addClassName("virtual-item");
-                card.setWidth("33%");  // 3 kolommen
+
+                card.setWidth("33.333%");
+                card.getStyle().set("box-sizing", "border-box");
+
                 rowLayout.add(card);
             });
 
             return rowLayout;
         }));
+    }
+
+    private record WorkAddressItem(Customer customer, Address address) {
     }
 
     private void getAllCustomers() {
@@ -123,14 +141,27 @@ public class CustomerDashboardView extends VerticalLayout implements BeforeEnter
             Optional<List<Customer>> optCustomer =
                     customerService.getCustomerByNameOrVat(event.getValue())
                             .map(list -> {
-                                list.sort(Comparator.comparing(x -> x.getName().replaceFirst("^[’']", ""), String.CASE_INSENSITIVE_ORDER));
+                                list.sort(Comparator.comparing(
+                                        x -> x.getName().replaceFirst("^[’']", ""),
+                                        String.CASE_INSENSITIVE_ORDER
+                                ));
                                 return list;
                             });
-            if((optCustomer.isPresent()) && (optCustomer.get().size() > 0)) {
-                List<List<Customer>> rows = chunk(optCustomer.get(), 3);
+
+            if (optCustomer.isPresent() && !optCustomer.get().isEmpty()) {
+
+                List<WorkAddressItem> workAddresses = optCustomer.get().stream()
+                        .flatMap(customer -> customer.getAddresses().stream()
+                                .filter(address -> address.getInvoiceAddress() == null || !address.getInvoiceAddress())
+                                .map(address -> new WorkAddressItem(customer, address))
+                        )
+                        .toList();
+
+                List<List<WorkAddressItem>> rows = chunk(workAddresses, 3);
+
                 virtualList.setItems(rows);
-            }
-            else{
+
+            } else {
                 Notification.show("Geen klanten gevonden");
             }
         });

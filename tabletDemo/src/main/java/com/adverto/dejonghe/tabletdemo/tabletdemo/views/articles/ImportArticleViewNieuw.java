@@ -95,17 +95,11 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     private List<ProductLevel6>level6List;
     private List<ProductLevel7>level7List;
 
-    private Dialog bulkDialog;
-    private Dialog configureSetDialog;
-    private Dialog configureCoupledDialog;
-    private Dialog newArticleDialog;
-    private Dialog changeArticleDialog;
+
     private Dialog showImageDialog;
     private Dialog pdfDialog;
     private Dialog linkDialog;
     private Dialog setViewSimpleDialog;
-    private Dialog moveProductDialog;
-    private Dialog copyProductDialog;
 
     private final Grid<Product> grid = new Grid<>(Product.class, false);
     private List<Product> productsForGrid;
@@ -133,34 +127,11 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     private ComboBox<ProductLevel6>cbProductLevel6;
     private ComboBox<ProductLevel7>cbProductLevel7;
 
-    private Button bAddProductLevel1;
-    private Button bAddProductLevel2;
-    private Button bAddProductLevel3;
-    private Button bAddProductLevel4;
-    private Button bAddProductLevel5;
-    private Button bAddProductLevel6;
-    private Button bAddProductLevel7;
-
     Grid.Column codeColumn;
     Grid.Column posColumn;
     Grid.Column internalNameColumn;
-    Grid.Column purchaceColumn;
-    Grid.Column sellComumn;
-    Grid.Column sellIndustryComumn;
-    Grid.Column marginColumn;
-    Grid.Column marginIndustryColumn;
     Grid.Column commentColumn;
-    Grid.Column moqColumn;
     Grid.Column unitColumn;
-
-    Grid.Column<PurchasePrice> purchaseDateColumn;
-
-    private List<String> importBulkLevelList = new ArrayList<>();
-
-    private E_Product_Level selectedProductLevel;
-    private Grid<ProductDiscriptionAndId>bulkGrid = new Grid<>(ProductDiscriptionAndId.class);
-
-    private Grid<PurchasePrice>purchasePriceGrid = new Grid<>();
 
     NumberFormat df = NumberFormat.getNumberInstance(new Locale("nl", "BE"));
 
@@ -253,7 +224,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         addDataToGrid();
         setUpBinder();
         setUpProductLevelComboBoxes();
-        setUpPurchasePricegrid();
         setUpPriceValueChangeListeners();
         setUpFilter();
     }
@@ -446,319 +416,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 tryToCalculateSellPriceIndustry(editor.getItem());
             }
         });
-    }
-
-    private void setUpPurchasePricegrid() {
-        purchasePriceGrid.addClassName("no-large-cells");
-        purchasePriceGrid.setWidth("100%");
-        purchasePriceGrid.removeAllColumns();
-        purchaseDateColumn = purchasePriceGrid.addComponentColumn(item -> {
-                    DatePicker datePicker = new DatePicker();
-                    UI.getCurrent().getPage().executeJs(
-                            "const dp = $0; dp.i18n = Object.assign(dp.i18n, {firstDayOfWeek: 1});",
-                            datePicker.getElement()
-                    );
-                    datePicker.setLocale(new Locale("nl", "BE"));
-
-                    if (item.getPurchaseDate() != null) {
-                        datePicker.setValue(item.getPurchaseDate());
-                    } else {
-                        datePicker.setValue(LocalDate.now());
-                    }
-
-                    datePicker.addValueChangeListener(listener -> {
-                        item.setPurchaseDate(datePicker.getValue());
-                        productService.save(selectedProduct);
-
-                        if (selectedProduct.getProductCode() != null && selectedProduct.getProductCode().length() > 0) {
-                            Optional<List<Product>> byProductCodeEqualCaseInsensitive =
-                                    productService.findByProductCodeEqualCaseInsensitive(selectedProduct.getProductCode());
-
-                            if (byProductCodeEqualCaseInsensitive.isPresent()) {
-                                for (Product product : byProductCodeEqualCaseInsensitive.get()) {
-                                    product.setPurchasePriseList(selectedProduct.getPurchasePriseList());
-                                    productService.save(product);
-                                }
-                                Notification.show("Er zijn " + byProductCodeEqualCaseInsensitive.get().size() + " artikels aangepast");
-                            }
-                        }
-                    });
-
-                    return datePicker;
-                })
-                .setHeader("Aankoopdatum")
-                .setComparator(item -> item.getPurchaseDate())
-                .setSortable(true)
-                .setResizable(true)
-                .setAutoWidth(true)
-                .setFlexGrow(3);
-
-
-        purchasePriceGrid.addComponentColumn(item -> {
-            TextField textField = new TextField();
-            if(item.getQuantity() != null){
-                textField.setValue(df.format(item.getQuantity()));
-            }
-            else{
-                textField.setValue("0,0");
-            }
-            textField.addValueChangeListener(listener -> {
-                try{
-                    Optional<Double>optDoublePurchasePrice = Optional.of(df.parse(textField.getValue()).doubleValue());
-                    if(optDoublePurchasePrice.isPresent()){
-                        item.setQuantity(optDoublePurchasePrice.get());
-                    }
-                    else{
-                        Notification notification = new Notification();
-                        notification.setText("Deze waarde moet een decimale waarde zijn met een komma vb, 23,55");
-                    }
-                    productService.save(selectedProduct);
-                    //search every product with same productcode and save the Purchaselist to every item.
-                    if(selectedProduct.getProductCode() != null && selectedProduct.getProductCode().length() > 0){
-                        Optional<List<Product>> byProductCodeEqualCaseInsensitive = productService.findByProductCodeEqualCaseInsensitive(selectedProduct.getProductCode());
-                        if(byProductCodeEqualCaseInsensitive.isPresent()){
-                            for(Product product : byProductCodeEqualCaseInsensitive.get()){
-                                product.setPurchasePriseList(selectedProduct.getPurchasePriseList());
-                                productService.save(product);
-                            }
-                            Notification.show("Er zijn " + byProductCodeEqualCaseInsensitive.get().size() + " artikels aangepast");
-                        }
-                    }
-                }
-                catch (NumberFormatException exception){
-                    Notification.show("Aantal kon niet worden bewaard");
-                } catch (ParseException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            return textField;
-        }).setHeader("Aantal").setResizable(true).setAutoWidth(true).setFlexGrow(3);
-
-        purchasePriceGrid.addComponentColumn(item -> {
-            TextField textField = new TextField();
-            if(item.getPrice() != null){
-                textField.setValue(df.format(item.getPrice()));
-            }
-            else{
-                textField.setValue("0,0");
-            }
-            textField.addValueChangeListener(listener -> {
-                try{
-
-                    Optional<Double>optDoublePurchasePrice = Optional.of(df.parse(textField.getValue()).doubleValue());
-                    if(optDoublePurchasePrice.isPresent()){
-                        item.setPrice(optDoublePurchasePrice.get());
-                    }
-                    else{
-                        Notification notification = new Notification();
-                        notification.setText("Deze waarde moet een decimale waarde zijn met een komma vb, 23,55");
-                    }
-                    productService.save(selectedProduct);
-
-                    //search every product with same productcode and save the Purchaselist to every item.
-                    if(selectedProduct.getProductCode() != null && selectedProduct.getProductCode().length() > 0){
-                        Optional<List<Product>> byProductCodeEqualCaseInsensitive = productService.findByProductCodeEqualCaseInsensitive(selectedProduct.getProductCode());
-                        if(byProductCodeEqualCaseInsensitive.isPresent()){
-                            for(Product product : byProductCodeEqualCaseInsensitive.get()){
-                                product.setPurchasePriseList(selectedProduct.getPurchasePriseList());
-                                productService.save(product);
-                            }
-                            Notification.show("Er zijn " + byProductCodeEqualCaseInsensitive.get().size() + " artikels aangepast");
-                        }
-                    }
-                }
-                catch (NumberFormatException exception){
-                    Notification.show("De aankoopprijs kon niet worden bewaard");
-                } catch (ParseException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            return textField;
-        }).setHeader("Aankoopprijs").setResizable(true).setAutoWidth(true).setFlexGrow(3);
-
-        purchasePriceGrid.addComponentColumn(item -> {
-            TextField textField = new TextField();
-            textField.setWidth("100%");
-            if(item.getPrice() != null){
-                if(item.getComment() != null){
-                    textField.setValue(item.getComment().toString());
-                }
-                else{
-                    textField.setValue("");
-                }
-            }
-            textField.addValueChangeListener(listener -> {
-                item.setComment(listener.getValue());
-                productService.save(selectedProduct);
-                //search every product with same productcode and save the Purchaselist to every item.
-                if(selectedProduct.getProductCode() != null && selectedProduct.getProductCode().length() > 0){
-                    Optional<List<Product>> byProductCodeEqualCaseInsensitive = productService.findByProductCodeEqualCaseInsensitive(selectedProduct.getProductCode());
-                    if(byProductCodeEqualCaseInsensitive.isPresent()){
-                        for(Product product : byProductCodeEqualCaseInsensitive.get()){
-                            product.setPurchasePriseList(selectedProduct.getPurchasePriseList());
-                            productService.save(product);
-                        }
-                        Notification.show("Er zijn " + byProductCodeEqualCaseInsensitive.get().size() + " artikels aangepast");
-                    }
-                }
-            });
-            return textField;
-            }).setFlexGrow(12).setHeader("Commentaar").setResizable(true);
-
-        purchasePriceGrid.addComponentColumn(item -> {
-            ComboBox<Supplier> comboBox = new ComboBox<>();
-            comboBox.setWidth("100%");
-            comboBox.setItemLabelGenerator(supplier -> supplier.getName());
-            Optional<List<Supplier>> optSupplierList = supplierService.getAllSuppliers();
-            if(!optSupplierList.isEmpty()){
-                comboBox.setItems(optSupplierList.get());
-            }
-            if(item.getSupplier() != null){
-                comboBox.setValue(item.getSupplier());
-            }
-            comboBox.addValueChangeListener(listener -> {
-                item.setSupplier(comboBox.getValue());
-                productService.save(selectedProduct);
-                //search every product with same productcode and save the Purchaselist to every item.
-                if(selectedProduct.getProductCode() != null && selectedProduct.getProductCode().length() > 0){
-                    Optional<List<Product>> byProductCodeEqualCaseInsensitive = productService.findByProductCodeEqualCaseInsensitive(selectedProduct.getProductCode());
-                    if(byProductCodeEqualCaseInsensitive.isPresent()){
-                        for(Product product : byProductCodeEqualCaseInsensitive.get()){
-                            product.setPurchasePriseList(selectedProduct.getPurchasePriseList());
-                            productService.save(product);
-                        }
-                        Notification.show("Er zijn " + byProductCodeEqualCaseInsensitive.get().size() + " artikels aangepast");
-                    }
-                }
-            });
-            comboBox.addCustomValueSetListener(e -> {
-                Supplier supplier = new Supplier();
-                supplier.setName(e.getDetail());
-                supplier.setAlert(false);
-                supplierService.save(supplier);
-                optSupplierList.get().add(supplier);
-                comboBox.setItems(optSupplierList.get());
-                comboBox.setValue(supplier);
-                //search every product with same productcode and save the Purchaselist to every item.
-                if(selectedProduct.getProductCode() != null && selectedProduct.getProductCode().length() > 0){
-                    Optional<List<Product>> byProductCodeEqualCaseInsensitive = productService.findByProductCodeEqualCaseInsensitive(selectedProduct.getProductCode());
-                    if(byProductCodeEqualCaseInsensitive.isPresent()){
-                        for(Product product : byProductCodeEqualCaseInsensitive.get()){
-                            product.setPurchasePriseList(selectedProduct.getPurchasePriseList());
-                            productService.save(product);
-                        }
-                        Notification.show("Er zijn " + byProductCodeEqualCaseInsensitive.get().size() + " artikels aangepast");
-                    }
-                }
-            });
-            return comboBox;
-        }).setHeader("Leverancier").setFlexGrow(12).setAutoWidth(true).setFrozenToEnd(true);
-
-        purchasePriceGrid.addComponentColumn(item -> {
-            Button addButton = new Button(new Icon(VaadinIcon.PLUS));
-            addButton.addThemeVariants(ButtonVariant.LUMO_ICON);
-            addButton.addClickListener(e -> {
-                PurchasePrice purchasePrice = new PurchasePrice();
-                purchasePrice.setPurchaseDate(LocalDate.now());
-                selectedProduct.getPurchasePriseList().add(purchasePrice);
-                purchasePriceGrid.getDataProvider().refreshAll();
-            });
-            return addButton;
-        }).setAutoWidth(true).setFlexGrow(1).setFrozenToEnd(true);
-
-        purchasePriceGrid.addComponentColumn(item -> {
-            Button addButton = new Button(new Icon(VaadinIcon.CLOSE_SMALL));
-            addButton.addThemeVariants(ButtonVariant.LUMO_WARNING);
-            addButton.addClickListener(e -> {
-                selectedProduct.getPurchasePriseList().remove(item);
-                purchasePriceGrid.getDataProvider().refreshAll();
-            });
-            return addButton;
-        }).setAutoWidth(true).setFlexGrow(1).setFrozenToEnd(true);
-
-        purchasePriceGrid.sort(
-                List.of(new GridSortOrder<>(purchaseDateColumn, SortDirection.DESCENDING))
-        );
-
-    }
-
-
-    private Grid getItemGrid() {
-        bulkGrid.removeAllColumns();
-        bulkGrid.addColumn(item -> item.getDiscription()).setHeader("Omschrijving").setAutoWidth(true);
-        bulkGrid.addComponentColumn(item -> {
-            Button removeButton = new Button(new Icon(VaadinIcon.CLOSE_SMALL));
-            removeButton.addThemeVariants(ButtonVariant.LUMO_WARNING);
-            removeButton.addClickListener(event -> {
-                switch (selectedProductLevel){
-                    case PRODUCTLEVEL1:
-                        productLevel1Service.removeById(item.getId());
-                        try {
-                            bulkGrid.setItems(productLevel1Service.getProductDiscriptionAndId().get());
-                        }
-                        catch (Exception e) {
-                            bulkGrid.setVisible(false);
-                        }
-                        break;
-                    case PRODUCTLEVEL2:
-                        productLevel2Service.removeById(item.getId());
-                        try {
-                            bulkGrid.setItems(productLevel2Service.getProductLevel2NamesAndId().get());
-                        }
-                        catch (Exception e) {
-                            bulkGrid.setVisible(false);
-                        }
-                        break;
-                    case PRODUCTLEVEL3:
-                        productLevel3Service.removeById(item.getId());
-                        try {
-                            bulkGrid.setItems(productLevel3Service.getProductLevel3NamesAndLevelAndId().get());
-                        }
-                        catch (Exception e) {
-                            bulkGrid.setVisible(false);
-                        }
-                        break;
-                    case PRODUCTLEVEL4:
-                        productLevel4Service.removeById(item.getId());
-                        try {
-                            bulkGrid.setItems(productLevel4Service.getProductLevel4NamesAndLevelAndId().get());
-                        }
-                        catch (Exception e) {
-                            bulkGrid.setVisible(false);
-                        }
-                        break;
-                    case PRODUCTLEVEL5:
-                        productLevel5Service.removeById(item.getId());
-                        try {
-                            bulkGrid.setItems(productLevel5Service.getProductLevel5NamesAndLevelAndId().get());
-                        }
-                        catch (Exception e) {
-                            bulkGrid.setVisible(false);
-                        }
-                        break;
-                    case PRODUCTLEVEL6:
-                        productLevel6Service.removeById(item.getId());
-                        try {
-                            bulkGrid.setItems(productLevel6Service.getProductLevel6NamesAndLevelAndId().get());
-                        }
-                        catch (Exception e) {
-                            bulkGrid.setVisible(false);
-                        }
-                        break;
-                    case PRODUCTLEVEL7:
-                        productLevel7Service.removeById(item.getId());
-                        try {
-                            bulkGrid.setItems(productLevel7Service.getProductLevel7NamesAndLevelAndId().get());
-                        }
-                        catch (Exception e) {
-                            bulkGrid.setVisible(false);
-                        }
-                        break;
-                }
-            });
-            return removeButton;
-        }).setHeader("Verwijder");
-        return bulkGrid;
     }
 
     private void setUpProductLevelComboBoxes() {
@@ -1228,13 +885,13 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 .withConverter(
                         new StringToDoubleConverter("De ingave moet een decimaal nummer zijn (getal met een punt als komma)"))
                 .bind(Product::getPurchasePrice, Product::setPurchasePrice);
-        purchaceColumn.setEditorComponent(tfPurchasePrice);
+
         productBinder.forField(tfSellMargin)
                 .withNullRepresentation("0.00")
                 .withConverter(
                         new StringToDoubleConverter("De ingave moet een decimaal nummer zijn (getal met een punt als komma)"))
                 .bind(Product::getSellMargin, Product::setSellMargin);
-        marginColumn.setEditorComponent(tfSellMargin);
+
         productBinder.forField(tfSellIndustryMargin)
                 .withNullRepresentation("0.00")
 //                .withValidator(
@@ -1250,7 +907,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 .withConverter(
                         new StringToDoubleConverter("De ingave moet een decimaal nummer zijn (getal met een punt als komma)"))
                 .bind(Product::getSellMarginIndustry, Product::setSellMarginIndustry);
-        marginIndustryColumn.setEditorComponent(tfSellIndustryMargin);
 
         productBinder.forField(tfSellPrice)
                 .withNullRepresentation("0.0")
@@ -1267,7 +923,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 .withConverter(
                         new StringToDoubleConverter("De ingave moet een decimaal nummer zijn (getal met een punt als komma)"))
                 .bind(Product::getSellPrice, Product::setSellPrice);
-        sellComumn.setEditorComponent(tfSellPrice);
         productBinder.forField(tfSellIndustryPrice)
                 .withNullRepresentation("0.0")
 //                .withValidator(
@@ -1283,7 +938,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 .withConverter(
                         new StringToDoubleConverter("De ingave moet een decimaal nummer zijn (getal met een punt als komma)"))
                 .bind(Product::getSellPriceIndustry, Product::setSellPriceIndustry);
-        sellIndustryComumn.setEditorComponent(tfSellIndustryPrice);
         tfComment.setWidth("100%");
         productBinder.forField(tfComment)
                 .withNullRepresentation("")
@@ -1293,7 +947,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         productBinder.forField(tfMoQ)
                 .withNullRepresentation("")
                 .bind(Product::getMoq, Product::setMoq);
-        moqColumn.setEditorComponent(tfMoQ);
+        //moqColumn.setEditorComponent(tfMoQ);
         productBinder.forField(tfUnit)
                 .withNullRepresentation("")
                 .bind(Product::getUnit, Product::setUnit);
@@ -1361,7 +1015,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
 
     private void setUpGrid() {
         grid.addClassName("no-large-cells");
-        grid.setSelectionMode(Grid.SelectionMode.MULTI);
+        grid.setSelectionMode(Grid.SelectionMode.SINGLE);
 
         Grid.Column<Product> sortColumnPosNr = grid.addColumn(item -> {
             if((item.getPositionNumber() != null) && (!item.getPositionNumber().isEmpty())){
@@ -1511,61 +1165,9 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 .setFlexGrow(5);
 
         grid.sort(List.of(new GridSortOrder<>(internalNameColumn, SortDirection.ASCENDING)));
-        purchaceColumn = grid.addColumn(item -> {
-            if(item.getPurchasePrice() != null){
-                return "€ " + df.format(item.getPurchasePrice());
-            }
-            else{
-                return "-";
-            }
-        }).setHeader("Aankoop").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
 
-        marginColumn = grid.addColumn(item -> {
-            if((item.getSellMargin() != null) && (!item.getSellMargin().isNaN())){
-                return df.format(item.getSellMargin());
-            }
-            else{
-                return "-";
-            }
-        }).setHeader("Marge A").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
+        commentColumn = grid.addColumn("comment").setHeader("Commentaar").setFlexGrow(1).setResizable(true);
 
-        sellComumn = grid.addColumn(item -> {
-            if((item.getSellPrice() != null) && (!item.getSellPrice().isNaN())){
-                return "€ " + df.format(item.getSellPrice());
-            }
-            else{
-                return "-";
-            }
-        }).setHeader("Verkoop A").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
-
-        marginIndustryColumn = grid.addColumn(item -> {
-            if(item.getSellMarginIndustry() != null){
-                return df.format(item.getSellMarginIndustry());
-            }
-            else{
-                return "-";
-            }
-        }).setHeader("Marge I").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
-        marginIndustryColumn.setClassNameGenerator(item -> "industry-column");
-
-        sellIndustryComumn = grid.addColumn(item -> {
-            if(item.getSellPriceIndustry() != null){
-                return "€ " + df.format(item.getSellPriceIndustry());
-            }
-            else{
-                return "-";
-            }
-        }).setHeader("Verkoop I").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
-
-        commentColumn = grid.addColumn("comment").setHeader("Commentaar").setWidth("330px").setFlexGrow(1).setResizable(true);
-        moqColumn = grid.addColumn(item -> {
-            if((item.getMoq() != null)){
-                return item.getMoq();
-            }
-            else{
-                return "";
-            }
-        }).setHeader("B/P.").setResizable(true).setWidth("100px").setFlexGrow(0).setFrozenToEnd(true);
         unitColumn = grid.addColumn(item -> {
             if(item.getUnit() != null){
                 return item.getUnit();
@@ -1678,71 +1280,15 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 }
                 updating.set(false);
             }
-
-            if(grid.getSelectedItems().size() > 0){
-                if((event.getItem() != null) && (event.getItem().getPurchasePriseList() != null) && (event.getItem().getPurchasePriseList().size() > 0)){
-                    purchasePriceGrid.setItems(event.getItem().getPurchasePriseList());
-                }
-                else{
-                    List<PurchasePrice> newPurchasePriceList = getNewPurchasePriceList();
-                    purchasePriceGrid.setItems(newPurchasePriceList);
-                    event.getItem().setPurchasePriseList(newPurchasePriceList);
-                }
-            }
-            else{
-                List<PurchasePrice> newPurchasePriceList = getNewPurchasePriceList();
-                newPurchasePriceList.clear();
-                purchasePriceGrid.setItems(newPurchasePriceList);
-                purchasePriceGrid.getDataProvider().refreshAll();
-            }
         });
 
         grid.addSelectionListener(event -> {
-            if(event.getAllSelectedItems().size() == 0){
-                List<PurchasePrice> newPurchasePriceList = getNewPurchasePriceList();
-                newPurchasePriceList.clear();
-                purchasePriceGrid.setItems(newPurchasePriceList);
-                purchasePriceGrid.getDataProvider().refreshAll();
-            }
-            else{
-                if((event.getFirstSelectedItem().get() != null) && (event.getFirstSelectedItem().get().getPurchasePriseList() != null) && (event.getFirstSelectedItem().get().getPurchasePriseList().size() > 0)){
-                    purchasePriceGrid.setItems(event.getFirstSelectedItem().get().getPurchasePriseList());
-                }
-                else{
-                    List<PurchasePrice> newPurchasePriceList = getNewPurchasePriceList();
-                    purchasePriceGrid.setItems(newPurchasePriceList);
-                    event.getFirstSelectedItem().get().setPurchasePriseList(newPurchasePriceList);
-                }
-            }
-        });
-
-        grid.addItemDoubleClickListener(event -> {
-            selectedProduct = event.getItem();
-            editor.cancel();
-            editor.editItem(event.getItem());
-            if((event.getItem().getSet() != null) && (event.getItem().getSet())){
-                tfPurchasePrice.setEnabled(false);
-                tfSellMargin.setEnabled(false);
-                tfSellPrice.setEnabled(false);
-                tfSellIndustryMargin.setEnabled(false);
-                tfSellIndustryPrice.setEnabled(false);
-            }
-            else{
-                tfPurchasePrice.setEnabled(true);
-                tfSellMargin.setEnabled(true);
-                tfSellPrice.setEnabled(true);
-                tfSellIndustryMargin.setEnabled(true);
-                tfSellIndustryPrice.setEnabled(true);
-            }
-            Component editorComponent = event.getColumn().getEditorComponent();
-            if (editorComponent instanceof Focusable) {
-                ((Focusable) editorComponent).focus();
-            }
         });
 
         grid.addThemeVariants(GridVariant.LUMO_COLUMN_BORDERS);
         grid.addThemeVariants(GridVariant.LUMO_NO_BORDER);
         grid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES);
+        grid.setHeightFull();
     }
 
 
@@ -1766,7 +1312,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                     // String vs Number → String komt altijd eerst
                     cmp = (p1 instanceof String) ? -1 : 1;
                 }
-
                 if (cmp != 0) return cmp;
             }
 
@@ -1855,11 +1400,11 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         cbProductLevel7 = new ComboBox("");
         cbProductLevel7.setWidth("100%");
         hLayout1.add(getJumpToFolderIcon(),
-                setUpHorizontalLayoutFor(cbProductLevel1,bAddProductLevel1,E_Product_Level.PRODUCTLEVEL1),
-                setUpHorizontalLayoutFor(cbProductLevel2,bAddProductLevel2,E_Product_Level.PRODUCTLEVEL2),
-                        setUpHorizontalLayoutFor(cbProductLevel3,bAddProductLevel3,E_Product_Level.PRODUCTLEVEL3),
-                                setUpHorizontalLayoutFor(cbProductLevel4,bAddProductLevel4,E_Product_Level.PRODUCTLEVEL4),
-                                        setUpHorizontalLayoutFor(cbProductLevel5,bAddProductLevel5,E_Product_Level.PRODUCTLEVEL5)
+                setUpHorizontalLayoutFor(cbProductLevel1,E_Product_Level.PRODUCTLEVEL1),
+                setUpHorizontalLayoutFor(cbProductLevel2,E_Product_Level.PRODUCTLEVEL2),
+                        setUpHorizontalLayoutFor(cbProductLevel3,E_Product_Level.PRODUCTLEVEL3),
+                                setUpHorizontalLayoutFor(cbProductLevel4,E_Product_Level.PRODUCTLEVEL4),
+                                        setUpHorizontalLayoutFor(cbProductLevel5,E_Product_Level.PRODUCTLEVEL5)
                 //setUpHorizontalLayoutFor(cbProductLevel6,bAddProductLevel6,E_Product_Level.PRODUCTLEVEL6),
                     //setUpHorizontalLayoutFor(cbProductLevel7,bAddProductLevel7,E_Product_Level.PRODUCTLEVEL7),
                 );
@@ -1900,50 +1445,12 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         return goToFolderButton;
     }
 
-    private HorizontalLayout setUpHorizontalLayoutFor(ComboBox comboBox, Button addButton, E_Product_Level productLevel) {
+    private HorizontalLayout setUpHorizontalLayoutFor(ComboBox comboBox, E_Product_Level productLevel) {
         HorizontalLayout horizontalLayout = new HorizontalLayout();
         horizontalLayout.setWidth("100%");
         horizontalLayout.setJustifyContentMode(JustifyContentMode.BETWEEN);
         horizontalLayout.setAlignItems(Alignment.BASELINE);
-        addButton = new Button(new Icon(VaadinIcon.PLUS));
-        addButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY,
-                ButtonVariant.LUMO_WARNING);
-        addButton.addClickListener(event -> {
-            switch(productLevel) {
-                case E_Product_Level.PRODUCTLEVEL1:
-                    Notification.show("Product level 1");
-                    selectedProductLevel = E_Product_Level.PRODUCTLEVEL1;
-                    break;
-                case E_Product_Level.PRODUCTLEVEL2:
-                    Notification.show("Product level 2");
-                    selectedProductLevel = E_Product_Level.PRODUCTLEVEL2;
-                    break;
-                case E_Product_Level.PRODUCTLEVEL3:
-                    Notification.show("Product level 3");
-                    selectedProductLevel = E_Product_Level.PRODUCTLEVEL3;
-                    break;
-                case E_Product_Level.PRODUCTLEVEL4:
-                    Notification.show("Product level 4");
-                    selectedProductLevel = E_Product_Level.PRODUCTLEVEL4;
-                    break;
-                case E_Product_Level.PRODUCTLEVEL5:
-                    Notification.show("Product level 5");
-                    selectedProductLevel = E_Product_Level.PRODUCTLEVEL5;
-                    break;
-                case E_Product_Level.PRODUCTLEVEL6:
-                    Notification.show("Product level 6");
-                    selectedProductLevel = E_Product_Level.PRODUCTLEVEL6;
-                    break;
-                case E_Product_Level.PRODUCTLEVEL7:
-                    Notification.show("Product level 7");
-                    selectedProductLevel = E_Product_Level.PRODUCTLEVEL7;
-                    break;
-                default:
-                    Notification.show("Geen geselecteerd niveau!");
-            }
-                bulkDialog.open();
-        });
-        horizontalLayout.add(comboBox,addButton);
+        horizontalLayout.add(comboBox);
         return horizontalLayout;
     }
 
@@ -1963,14 +1470,8 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     private Div createSplitLayout() {
         Div wrapper = new Div();
         wrapper.setSizeFull();
-        wrapper.setClassName("grid-wrapper");
-        SplitLayout gridSplitLayoout = new SplitLayout();
-        gridSplitLayoout.setHeight("100%");
-        gridSplitLayoout.setOrientation(SplitLayout.Orientation.VERTICAL);
-        gridSplitLayoout.setSplitterPosition(80);
-        gridSplitLayoout.addToPrimary(grid);
-        gridSplitLayoout.addToSecondary(purchasePriceGrid);
-        wrapper.add(gridSplitLayoout);
+        wrapper.setClassName("grid-wrapper");;
+        wrapper.add(grid);
         return wrapper;
     }
 

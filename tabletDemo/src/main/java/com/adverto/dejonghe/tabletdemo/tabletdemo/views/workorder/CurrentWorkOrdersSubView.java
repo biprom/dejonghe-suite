@@ -2,11 +2,15 @@ package com.adverto.dejonghe.tabletdemo.tabletdemo.views.workorder;
 
 import com.adverto.dejonghe.common.dbservices.WorkOrderService;
 import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrder;
+import com.adverto.dejonghe.common.entities.customers.Address;
 import com.adverto.dejonghe.common.entities.enums.employee.UserFunction;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkOrderStatus;
+import com.adverto.dejonghe.tabletdemo.tabletdemo.controller.PdfController;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.customEvents.GetSelectedWorkOrderEvent;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.customEvents.ReloadProductListEvent;
+import com.adverto.dejonghe.tabletdemo.tabletdemo.services.WorkOrderPdfServices;
 import com.vaadin.flow.component.Text;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridSortOrder;
@@ -39,6 +43,8 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
 
     WorkOrderService workOrderService;
     ApplicationEventPublisher eventPublisher;
+    WorkOrderPdfServices workOrderPdfServices;
+    PdfController pdfController;
 
     TreeGrid<WorkOrder> pendingWorkOrdersGrid;
     List<WorkOrder>selectedWorkOrders;
@@ -59,9 +65,14 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
 
     @Autowired
     public CurrentWorkOrdersSubView(WorkOrderService workOrderService,
-                                    ApplicationEventPublisher eventPublisher) {
+                                    ApplicationEventPublisher eventPublisher,
+                                    WorkOrderPdfServices workOrderPdfServices,
+                                    PdfController pdfController) {
+
         this.workOrderService = workOrderService;
         this.eventPublisher = eventPublisher;
+        this.workOrderPdfServices = workOrderPdfServices;
+        this.pdfController = pdfController;
 
         setUpfilters();
         createReportDelete();
@@ -109,20 +120,34 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
         });
 
         filterName.addValueChangeListener(event -> {
-            if(event.getValue().length() > 0){
-                List<WorkOrder> collect = selectedWorkOrders.stream().filter(filter -> (filter.getWorkAddress().getAddressName().toLowerCase().contains(event.getValue().toLowerCase())) ||
-                        (filter.getWorkAddress().getCity().toLowerCase().contains(event.getValue().toLowerCase())) ||
-                        (filter.getWorkAddress().getStreet().toLowerCase().contains(event.getValue().toLowerCase()))||
-                        (filter.getWorkAddress().getCustomerName().toLowerCase().contains(event.getValue().toLowerCase()))).collect(Collectors.toList());
+            String search = event.getValue();
+
+            if (!search.isBlank()) {
+                String searchLower = search.toLowerCase();
+
+                List<WorkOrder> collect = selectedWorkOrders.stream()
+                        .filter(workOrder -> {
+                            Address address = workOrder.getWorkAddress();
+
+                            return address != null &&
+                                    (containsIgnoreCase(address.getAddressName(), searchLower)
+                                            || containsIgnoreCase(address.getCity(), searchLower)
+                                            || containsIgnoreCase(address.getStreet(), searchLower)
+                                            || containsIgnoreCase(address.getCustomerName(), searchLower));
+                        })
+                        .toList();
+
                 addItemsToPendingWorkOrderGridFromFilter(collect);
-                pendingWorkOrdersGrid.getDataProvider().refreshAll();
-            }
-            else{
+            } else {
                 addItemsToPendingWorkOrderGrid(selectedWorkOrders);
-                pendingWorkOrdersGrid.getDataProvider().refreshAll();
             }
 
+            pendingWorkOrdersGrid.getDataProvider().refreshAll();
         });
+    }
+
+    private boolean containsIgnoreCase(String value, String search) {
+        return value != null && value.toLowerCase().contains(search);
     }
 
     private Grid<WorkOrder> setUpGrid() {
@@ -142,6 +167,9 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
             return getWorkOrderDiscriptions(workOrder);
         }).setHeader("Omschrijving").setFlexGrow(7);
         Grid.Column<WorkOrder> columnResponsible = pendingWorkOrdersGrid.addColumn(workOrder -> getActiveMasterEmployees(workOrder)).setHeader("Verantwoordelijke").setFlexGrow(1);
+        pendingWorkOrdersGrid.addComponentColumn(workOrder -> {
+            return getOpenPdfIcon(workOrder);
+        }).setHeader("PDF").setFlexGrow(1);
 
 
         pendingWorkOrdersGrid.addItemClickListener(event -> {
@@ -190,6 +218,20 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
         headerRow.getCell(columnResponsible).setComponent(filterResponsible);
 
         return pendingWorkOrdersGrid;
+    }
+
+    private Icon getOpenPdfIcon(WorkOrder workOrder) {
+        Icon pdfIcon = new Icon(VaadinIcon.EYE);
+        pdfIcon.addClickListener(event -> {
+            String url = workOrderPdfServices.generateWorkOrderPDF(workOrder);
+            //now show it in a new tab in the browser
+            pdfController.setPdfNaam(url);
+
+            //to open tab with pdf
+            UI.getCurrent().getPage().open("/pdf", "_blank");
+
+        });
+        return pdfIcon;
     }
 
     private String getWorkOrderDiscriptions(WorkOrder workOrder) {

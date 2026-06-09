@@ -9,6 +9,7 @@ import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.enums.employee.UserFunction;
 import com.adverto.dejonghe.common.entities.enums.product.VAT;
 import com.adverto.dejonghe.common.services.ProductServices;
+import com.adverto.dejonghe.server.services.invoice.InvoiceServices;
 import com.vaadin.flow.component.*;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -64,6 +65,7 @@ import static com.vaadin.flow.component.button.ButtonVariant.LUMO_TERTIARY_INLIN
 @org.springframework.stereotype.Component
 @Scope("prototype")
 public class SelectProductSubView extends VerticalLayout {
+    private final InvoiceServices invoiceServices;
     ApplicationEventPublisher eventPublisher;
     ProductServices productServices;
     ProductService productService;
@@ -197,7 +199,7 @@ public class SelectProductSubView extends VerticalLayout {
                                 ShowLinkSubVieuw linkView,
                                 ProductServices productServices,
                                 AddCoupledProductSubView addCoupledProductSubView,
-                                SetViewSimple setView) {
+                                SetViewSimple setView, InvoiceServices invoiceServices) {
         this.productService = productService;
         this.productLevel1Service = productLevel1Service;
         this.productLevel2Service = productLevel2Service;
@@ -236,6 +238,7 @@ public class SelectProductSubView extends VerticalLayout {
         this.setPadding(false);
         this.setSpacing(false);
         this.setHeightFull();
+        this.invoiceServices = invoiceServices;
     }
 
     private void setUpNumberFormat() {
@@ -328,7 +331,7 @@ public class SelectProductSubView extends VerticalLayout {
 
     private void setUpAttachementDialog() {
         attachementDialog = new Dialog();
-        attachementDialog.setHeaderTitle("Datum bijlage");
+        attachementDialog.setHeaderTitle("");
 
         VerticalLayout dialogLayout = createDialogLayout();
         attachementDialog.add(dialogLayout);
@@ -390,34 +393,70 @@ public class SelectProductSubView extends VerticalLayout {
             selectedProductGrid.setItems(selectedProductList);
             eventPublisher.publishEvent(new AddRemoveProductEvent(this, "",null));
         });
-        Button addToAttachementButton = new Button(new Icon(VaadinIcon.FILE_O));
-        addToAttachementButton.addClickListener(e -> {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("d-M-yyyy");
-            List<LocalDate> uniqueDates = selectedProductList.stream()
-                    .filter(d -> (d.getDateToShowOnInvoice() != null) && (d.getDateToShowOnInvoice().length() > 1))
-                    .map(Product::getDateToShowOnInvoice)
-                    .map(d -> LocalDate.parse(d, formatter))
-                    .distinct()
-                    .sorted()
-                    .toList();
+        HorizontalLayout hLayout = new HorizontalLayout();
+        hLayout.setAlignItems(Alignment.CENTER);
+        Button attachementButton = new Button("Maak bijlage");
+        attachementButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        Button mergeButton = new Button("Samenvoegen");
+        mergeButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        hLayout.add(attachementButton);
+        hLayout.add(mergeButton);
+        Button addToAttachementOrMergedButton = new Button(new Icon(VaadinIcon.FILE_O));
+        addToAttachementOrMergedButton.addClickListener(e -> {
             attachementDialogLayout.removeAll();
-            for (LocalDate uniqueDate : uniqueDates) {
-                Button button = new Button(uniqueDate.format(DateTimeFormatter.ofPattern("d-M-yyyy")));
-                button.addClickListener(click -> {
-                    selectedProductList.stream().filter(product -> product.getBSelectedForAttachement() != null).filter(product -> product.getBSelectedForAttachement() == true).collect(Collectors.toList()).forEach(product -> {
-                        product.setBSelectedForAttachement(false);
-                        product.setAttachementNumber(uniqueDate);
-                        product.setBAttachement(true);});
-                    eventPublisher.publishEvent(new AddRemoveProductEvent(this, "",null));
-                    selectedProductGrid.getDataProvider().refreshAll();
-                    attachementDialog.close();
-                });
-                attachementDialogLayout.add(button);
-            }
+            attachementDialogLayout.setAlignItems(Alignment.CENTER);
+            attachementDialogLayout.setSpacing(true);
+            attachementDialogLayout.add(hLayout);
             attachementDialog.open();
+            attachementButton.addClickListener(click -> {
+                attachementDialogLayout.removeAll();
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("d-M-yyyy");
+                List<LocalDate> uniqueDates = selectedProductList.stream()
+                        .filter(d -> (d.getDateToShowOnInvoice() != null) && (d.getDateToShowOnInvoice().length() > 1))
+                        .map(Product::getDateToShowOnInvoice)
+                        .map(d -> LocalDate.parse(d, formatter))
+                        .distinct()
+                        .sorted()
+                        .toList();
+
+                //first ask 1 -> for attachement or 2 -> merged product
+
+                for (LocalDate uniqueDate : uniqueDates) {
+                    Button button = new Button(uniqueDate.format(DateTimeFormatter.ofPattern("d-M-yyyy")));
+                    button.addClickListener(x -> {
+                        selectedProductList.stream().filter(product -> product.getBSelectedForAttachement() != null).filter(product -> product.getBSelectedForAttachement() == true).collect(Collectors.toList()).forEach(product -> {
+                            product.setBSelectedForAttachement(false);
+                            product.setAttachementNumber(uniqueDate);
+                            product.setBAttachement(true);});
+                        eventPublisher.publishEvent(new AddRemoveProductEvent(this, "",null));
+                        selectedProductGrid.getDataProvider().refreshAll();
+                        attachementDialog.close();
+                    });
+                    attachementDialogLayout.add(button);
+                }
+            });
+        });
+        mergeButton.addClickListener(e -> {
+            attachementDialogLayout.removeAll();
+            List<Product> selectedProducts = selectedProductList.stream().filter(product -> product.getBSelectedForAttachement() != null).filter(product -> product.getBSelectedForAttachement() == true).collect(Collectors.toList());
+            if((selectedProducts != null) && (selectedProducts.size() > 0)){
+                selectedProducts.forEach(product -> {
+                    product.setBComment(true);
+                    product.setMergedProduct(true);
+                    product.setBSelectedForAttachement(false);
+                });
+                //create new merged Prodcut with total price of merged products
+                Product mergedProduct = createProdcutFromMergedProducts(selectedProducts);
+                //TODO add item on top of selected ones
+                dataView.addItemBefore(mergedProduct,selectedProducts.getFirst());
+                eventPublisher.publishEvent(new AddRemoveProductEvent(this, "Product toegevoegd", mergedProduct));
+                selectedProductGrid.getDataProvider().refreshAll();
+                attachementDialog.close();
+            }
+
         });
         attachementHlayout.setAlignItems(Alignment.CENTER);
-        attachementHlayout.add(selectAll, addToAttachementButton);
+        attachementHlayout.add(selectAll, addToAttachementOrMergedButton);
 
         selectedProductGrid.setRowsDraggable(true);
         selectedProductGrid.setAllRowsVisible(true);
@@ -482,7 +521,21 @@ public class SelectProductSubView extends VerticalLayout {
 
         selectedProductGridCollectColumn = selectedProductGrid.addComponentColumn(item -> {
             try{
-                if((item.getBComment().equals(Boolean.TRUE)) || (item.getBWorkHour().equals(Boolean.TRUE)) || (item.getBTravel().equals(Boolean.TRUE))){
+                if((item.getBComment().equals(Boolean.TRUE)) && (item.getMergedProduct() != null) && (item.getMergedProduct() == true)){
+                    Checkbox checkbox = new Checkbox();
+                    checkbox.addClassName("merged");
+                    checkbox.setValue(true);
+                    checkbox.addClickListener(event -> {
+                        if (checkbox.getValue() == false) {
+                            item.setBComment(false);
+                            item.setMergedProduct(false);
+                            selectedProductGrid.getDataProvider().refreshAll();
+                            eventPublisher.publishEvent(new AddRemoveProductEvent(this, "",null));
+                        }
+                    });
+                    return checkbox;
+                }
+                else if((item.getBComment().equals(Boolean.TRUE)) || (item.getBTravel().equals(Boolean.TRUE))){
                     return new Span("");
                 }
                 else{
@@ -528,7 +581,8 @@ public class SelectProductSubView extends VerticalLayout {
                 });
                 return checkbox;
             }
-            }).setAutoWidth(true).setFlexGrow(0).setFrozen(true).setHeader(attachementHlayout);
+        }).setAutoWidth(true).setFlexGrow(0).setFrozen(true).setHeader(attachementHlayout);
+
 
         Grid.Column<Product> productNameColumn = selectedProductGrid.addColumn(item -> item.getInternalName()).setHeader("Naam").setResizable(true).setAutoWidth(true).setFlexGrow(10);
         selectedProductGridMinusColumn = selectedProductGrid.addComponentColumn(item -> {
@@ -920,6 +974,27 @@ public class SelectProductSubView extends VerticalLayout {
                 ((Focusable) editorComponent).focus();
             }
         });
+    }
+
+    private Product createProdcutFromMergedProducts(List<Product> selectedProducts) {
+        Product mergedProduct = new Product();
+        mergedProduct.setDate(selectedProducts.get(0).getDate());
+        //mergedProduct.setDateToShowOnInvoice(selectedProducts.get(0).getDate().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")).toString());
+        mergedProduct.setShowDate(false);
+        mergedProduct.setSelectedAmount(1.0);
+        mergedProduct.setInternalName("Merged Product");
+        mergedProduct.setMergedProducts(selectedProducts);
+        mergedProduct.setSellPrice(selectedProducts.stream()
+                .map(Product::getTotalPrice)
+                .filter(Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .sum());
+        mergedProduct.setPurchasePrice(mergedProduct.getSellPrice());
+        mergedProduct.setSellMargin(1.0);
+        mergedProduct.setSellMarginIndustry(1.0);
+        mergedProduct.setTotalPrice(mergedProduct.getSellPrice());
+        mergedProduct.setVat(VAT.EENENTWINTIG);
+        return mergedProduct;
     }
 
     private Component getActionMenu(Product item) {

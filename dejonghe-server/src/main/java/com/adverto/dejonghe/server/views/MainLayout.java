@@ -8,6 +8,7 @@ import com.adverto.dejonghe.server.views.customers.CustomerDashboardView;
 import com.adverto.dejonghe.server.views.dashboard.DashboardView;
 import com.adverto.dejonghe.server.views.invoice.FinalInvoiceView;
 import com.adverto.dejonghe.server.views.invoice.ProformaInvoiceView;
+import com.adverto.dejonghe.server.views.quote.QuoteView;
 import com.adverto.dejonghe.server.views.workorder.FinishedWorkorderView;
 import com.adverto.dejonghe.server.views.workorder.PendingWorkorderView;
 import com.vaadin.flow.component.Component;
@@ -134,9 +135,9 @@ public class MainLayout extends AppLayout {
                 DashboardView.class);
         dashboardLink.setPrefixComponent(createProformaMenuLayout("Dashboard".toUpperCase(),VaadinIcon.DASHBOARD.create()));
 
-//        SideNavItem quoteLink = new SideNavItem("",
-//                QuoteView.class);
-//        quoteLink.setPrefixComponent(createProformaMenuLayout("Offerte".toUpperCase(),VaadinIcon.TEXT_INPUT.create()));
+        SideNavItem quoteLink = new SideNavItem("",
+                QuoteView.class);
+        quoteLink.setPrefixComponent(createProformaMenuLayout("Offerte".toUpperCase(),VaadinIcon.TEXT_INPUT.create()));
 
         SideNavItem proformaLink = new SideNavItem("",
                 ProformaInvoiceView.class);
@@ -166,7 +167,7 @@ public class MainLayout extends AppLayout {
                 SupplierView.class);
         supplierLink.setPrefixComponent(createMenuLayout("Leveranciers".toUpperCase(),VaadinIcon.TRUCK.create()));
 
-        nav.addItem(importProductLinkNieuw,supplierLink,customerLink,technicianLink,workOrderLink, proformaLink,invoiceLink,dashboardLink);
+        nav.addItem(importProductLinkNieuw,supplierLink,customerLink,technicianLink, quoteLink, workOrderLink, proformaLink,invoiceLink,dashboardLink);
 
 //        List<MenuEntry> menuEntries = MenuConfiguration.getMenuEntries();
 //        menuEntries.forEach(entry -> {

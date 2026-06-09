@@ -1050,15 +1050,29 @@ public class SelectProductSubView extends VerticalLayout {
 
         productCodeColumn = productGrid.addComponentColumn(item -> {
             if(item.getProductCode() != null){
-                if(item.isBoldMode() == false){
-                    return new Span(item.getProductCode());
-                }
-                else{
+
+                if(item.isBoldMode() == true){
                     Span span = new Span(item.getProductCode());
                     span.getStyle().set("font-weight", "bold");
                     span.addClassName("boxed-text");
                     return span;
+                } else if (item.isSelectedMode()) {
+                    Span span = new Span(item.getProductCode());
+
+                    span.getStyle()
+                            .set("font-weight", "600")
+                            .set("background-color", "#E3F2FD")
+                            .set("color", "#1565C0")
+                            .set("padding", "3px 10px")
+                            .set("border-radius", "999px")
+                            .set("border", "1px solid #90CAF9")
+                            .set("box-shadow", "0 2px 8px rgba(21,101,192,0.15)")
+                            .set("display", "inline-block")
+                            .set("box-shadow", "0 0 6px #42A5F5, 0 0 12px #42A5F5");
+
+                    return span;
                 }
+                return new Span(item.getProductCode());
             }
             else{
                 return new Span("");
@@ -1186,9 +1200,9 @@ public class SelectProductSubView extends VerticalLayout {
 
                     return compareOnderdeel(value1, value2);
                 })
-                .setAutoWidth(true)
+                .setFlexGrow(2)
                 .setResizable(true);
-        productCommentColumn = productGrid.addColumn(item -> item.getComment()).setHeader("Commentaar").setAutoWidth(true).setResizable(true);
+        productCommentColumn = productGrid.addColumn(item -> item.getComment()).setHeader("Commentaar").setFlexGrow(0).setResizable(true);
         productCommentColumn = productGrid.addComponentColumn(item -> {
             Span linkLike = new Span(productServices.getEndFolder(item));
             linkLike.getStyle()
@@ -1232,13 +1246,11 @@ public class SelectProductSubView extends VerticalLayout {
                 } else if (item.getProductLevel1() != null) {
 
                 }
-
-
             });
 
             add(linkLike);
             return linkLike;
-        }).setHeader("Eindmap").setAutoWidth(true).setResizable(true);
+        }).setHeader("Eindmap").setFlexGrow(0).setResizable(true);
         productPurchageColumn = productGrid.addColumn(item -> df.format(item.getPurchasePrice())).setHeader("Aankoopprijs").setAutoWidth(true).setResizable(true);
         productMarginColumn = productGrid.addColumn(item -> {
             try{
@@ -1317,9 +1329,9 @@ public class SelectProductSubView extends VerticalLayout {
         productUnitColumn = productGrid.addColumn(Product::getUnit).setHeader("EH").setAutoWidth(true).setFlexGrow(0).setFrozenToEnd(true);
 
         productVColumn = productGrid.addComponentColumn(item -> {
-            Button plusButton = new Button("V");
-            plusButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
-            plusButton.addClickListener(event -> {
+            Button addButton = new Button("V");
+            addButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
+            addButton.addClickListener(event -> {
                 if(selectedSet != null && (item.getProductCode() == null || item.getProductCode().isEmpty() )){
                     Notification notification = new Notification();
                     notification.addThemeVariants(NotificationVariant.LUMO_ERROR);
@@ -1333,7 +1345,7 @@ public class SelectProductSubView extends VerticalLayout {
                     productSelectedFromCoupledProductPopUP = false;
                 }
             });
-            return plusButton;
+            return addButton;
         }).setHeader("V").setAutoWidth(true).setFlexGrow(0).setFrozenToEnd(true);
 
         productBinder = new Binder<>(Product.class);
@@ -1545,6 +1557,8 @@ public class SelectProductSubView extends VerticalLayout {
                             setTotalsInFooter();
                             //publish event so the received View can store the selected Workorder/Invoice...
                             eventPublisher.publishEvent(new AddRemoveProductEvent(this, "Product toegevoegd", productToAdd));
+                            item.setSelectedMode(true);
+                            productGrid.getDataProvider().refreshItem(item);
                         }
                         item.setSelectedAmount(0.0);
                         productGrid.getDataProvider().refreshItem(item);
@@ -1553,6 +1567,8 @@ public class SelectProductSubView extends VerticalLayout {
                         doubleSelectedProduct = null;
                         dataView.addItem(productToAdd);
                         eventPublisher.publishEvent(new AddRemoveProductEvent(this, "Product toegevoegd", productToAdd));
+                        item.setSelectedMode(true);
+                        productGrid.getDataProvider().refreshItem(item);
                     }
                 }
 
@@ -1579,6 +1595,8 @@ public class SelectProductSubView extends VerticalLayout {
                 eventPublisher.publishEvent(new AddRemoveProductEvent(this, "Product toegevoegd", productToAdd));
             }
             item.setSelectedAmount(0.0);
+            productGrid.getDataProvider().refreshItem(item);
+            item.setSelectedMode(true);
             productGrid.getDataProvider().refreshItem(item);
         }
         else{
@@ -1685,7 +1703,7 @@ public class SelectProductSubView extends VerticalLayout {
                     productGrid.setAllRowsVisible(true);
                     formLayoutLastSelectedLevel.removeAll();
                     VerticalLayout verticalLayout = new VerticalLayout();
-                    verticalLayout.setSizeFull();
+                    //verticalLayout.setSizeFull();
                     verticalLayout.setSpacing(true);
                     verticalLayout.add(tfFilter,productGrid);
                     formLayoutLastSelectedLevel.add(verticalLayout);
@@ -1930,7 +1948,7 @@ public class SelectProductSubView extends VerticalLayout {
                 addItemsToProductGrid(allProductsByCategory.get());
                 formLayoutLastSelectedLevel.removeAll();
                 VerticalLayout verticalLayout = new VerticalLayout();
-                verticalLayout.setSizeFull();
+                //verticalLayout.setSizeFull();
                 verticalLayout.setSpacing(true);
                 verticalLayout.add(tfFilter,productGrid);
                 formLayoutLastSelectedLevel.add(verticalLayout);
@@ -1963,7 +1981,7 @@ public class SelectProductSubView extends VerticalLayout {
                 addItemsToProductGrid(allProductsByCategory.get());
                 formLayoutLastSelectedLevel.removeAll();
                 VerticalLayout verticalLayout = new VerticalLayout();
-                verticalLayout.setWidth("100%");
+                //verticalLayout.setWidth("100%");
                 verticalLayout.setHeightFull();
                 verticalLayout.setSpacing(true);
                 verticalLayout.add(tfFilter,productGrid);
@@ -1999,7 +2017,7 @@ public class SelectProductSubView extends VerticalLayout {
                 addItemsToProductGrid(allProductsByCategory.get());
                 formLayoutLastSelectedLevel.removeAll();
                 VerticalLayout verticalLayout = new VerticalLayout();
-                verticalLayout.setWidth("100%");
+                //verticalLayout.setWidth("100%");
                 verticalLayout.setHeightFull();
                 verticalLayout.setSpacing(true);
                 verticalLayout.add(tfFilter,productGrid);
@@ -2034,7 +2052,7 @@ public class SelectProductSubView extends VerticalLayout {
                 addItemsToProductGrid(allProductsByCategory.get());
                 formLayoutLastSelectedLevel.removeAll();
                 VerticalLayout verticalLayout = new VerticalLayout();
-                verticalLayout.setWidth("100%");
+                //verticalLayout.setWidth("100%");
                 verticalLayout.setSpacing(true);
                 verticalLayout.add(tfFilter,productGrid);
                 formLayoutLastSelectedLevel.add(verticalLayout);
@@ -2104,7 +2122,7 @@ public class SelectProductSubView extends VerticalLayout {
                 addItemsToProductGrid(allProductsByCategory.get());
                 formLayoutLastSelectedLevel.removeAll();
                 VerticalLayout verticalLayout = new VerticalLayout();
-                verticalLayout.setWidth("100%");
+                //verticalLayout.setWidth("100%");
                 verticalLayout.setHeightFull();
                 verticalLayout.setSpacing(true);
                 verticalLayout.add(tfFilter,productGrid);
@@ -2215,6 +2233,17 @@ public class SelectProductSubView extends VerticalLayout {
                         selectedProductList.remove(selectedProduct);
                         selectedProductGrid.getDataProvider().refreshAll();
                         eventPublisher.publishEvent(new AddRemoveProductEvent(this, "Product verwijderd",null));
+                        //refresh productgrid (to deselect selected items (blue shiny label)
+                        if(selectedProductList != null && selectedProductList.size() > 0){
+                            long otherSameSelectedProducts = selectedProductList.stream().filter(x -> (x.getProductCode() != null) && (x.getProductCode().matches(selectedProduct.getProductCode()))).count();
+                            if(otherSameSelectedProducts == 0){
+                                if((productList != null) && (productList.size() > 0)){
+                                    productList.stream().filter(x -> (x.getProductCode() != null) && (x.getProductCode().matches(selectedProduct.getProductCode()))).findFirst().ifPresent(product -> {product.setSelectedMode(false);});
+                                    productGrid.getDataProvider().refreshAll();
+                                }
+                            }
+                        }
+
 
                         //check if delete event came from SetSubView -> so we need to check if product is in other sets
                         //if so the product needs to stay a setElement
@@ -2248,6 +2277,7 @@ public class SelectProductSubView extends VerticalLayout {
                         //when filter is not touched
                         productService.delete(selectedProduct);
                         selectedProductGrid.getDataProvider().refreshAll();
+                        //setSelectedMode from productgrid to false if no
                         eventPublisher.publishEvent(new AddRemoveProductEvent(this, "Product verwijderd",null));
                         //notification.close();
                     }
@@ -2477,61 +2507,24 @@ public class SelectProductSubView extends VerticalLayout {
         dataView = selectedProductGrid.setItems(filteredSelectedProductList);
     }
 
-    public ProductLevel1 getSelectedProductLevel1() {
-        return selectedProductLevel1;
-    }
-
-    public ProductLevel2 getSelectedProductLevel2() {
-        return selectedProductLevel2;
-    }
-
-    public ProductLevel3 getSelectedProductLevel3() {
-        return selectedProductLevel3;
-    }
-
-    public ProductLevel4 getSelectedProductLevel4() {
-        return selectedProductLevel4;
-    }
-
-    public ProductLevel5 getSelectedProductLevel5() {
-        return selectedProductLevel5;
-    }
-
-    public ProductLevel6 getSelectedProductLevel6() {
-        return selectedProductLevel6;
-    }
-
-    public ProductLevel7 getSelectedProductLevel7() {
-        return selectedProductLevel7;
-    }
-
-    public void setItemsToProductGridToEditSet(Product selectedSet) {
-        productList = productService.findProductsByLevels(
-                selectedSet.getProductLevel1(),
-                selectedSet.getProductLevel2(),
-                selectedSet.getProductLevel3(),
-                selectedSet.getProductLevel4(),
-                selectedSet.getProductLevel5(),
-                selectedSet.getProductLevel6(),
-                selectedSet.getProductLevel7());
-        if(productList != null){
-            addItemsToProductGrid(productList);
-            productGrid.setAllRowsVisible(true);
-            formLayoutLastSelectedLevel.removeAll();
-            VerticalLayout verticalLayout = new VerticalLayout();
-            verticalLayout.setSizeFull();
-            verticalLayout.setSpacing(true);
-            verticalLayout.add(tfFilter,productGrid);
-            formLayoutLastSelectedLevel.add(verticalLayout);
-            formLayoutLastSelectedLevel.setColspan(verticalLayout,2);
-        }
-    }
-
     public void addItemsToProductGrid(List<Product> productList){
         //if multiple products are from folder 'montagemateriaal' + something else -> set those of 'montagemateriaal' bold
         List<Product> montagemateriaal = productList.stream().filter(item -> (item.getProductLevel1() != null) && (item.getProductLevel1().getName().matches("Montagemateriaal"))).collect(Collectors.toList());
         if(montagemateriaal.size() < productList.size()){
             montagemateriaal.forEach(item -> item.setBoldMode(true));
+        }
+
+        //highlight products that are selected in selectedProductGrid
+        if((selectedProductList != null) && (selectedProductList.size() > 0)){
+            if((productList != null) && (productList.size() > 0)){
+                productList.stream().forEach(item -> {
+                    if((item.getId() != null) && (item.getId().length() > 0)){
+                        selectedProductList.stream().filter(x -> (x.getId()!= null) && (x.getId().matches(item.getId()))).forEach(x -> {
+                            item.setSelectedMode(true);
+                        });
+                    }
+                });
+            }
         }
 
         productGrid.setItems(productList);

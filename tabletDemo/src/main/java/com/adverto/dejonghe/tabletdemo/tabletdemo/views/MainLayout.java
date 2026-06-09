@@ -28,6 +28,7 @@ import com.vaadin.flow.server.menu.MenuConfiguration;
 import com.vaadin.flow.theme.lumo.Lumo;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
 import java.text.DecimalFormatSymbols;
@@ -55,6 +56,9 @@ public class MainLayout extends AppLayout {
     Map<Class<? extends Component>, String> noNav;
     Map<Class<? extends Component>, String> navCustomer;
     Map<Class<? extends Component>, String> navWorkOrder;
+
+    @Value("${feature.sync.enabled:false}")
+    private boolean syncEnabled;
 
     public MainLayout(SyncService syncService) {
 
@@ -107,50 +111,54 @@ public class MainLayout extends AppLayout {
         Image logo = new Image("icons/img.png", "Logo");
         logo.addClickListener(x -> {
 
-            Notification.show("Verzenden van alle afgewerkte werkbonnen naar de server");
-            try {
-                syncService.sendWorkOrders();
-            } catch (IOException e) {
-                Notification.show("Mislukt om de werkbonnen naar de server te verzenden");
+            if(syncEnabled){
+                Notification.show("Verzenden van alle afgewerkte werkbonnen naar de server");
+                try {
+                    syncService.sendWorkOrders();
+                } catch (IOException e) {
+                    Notification.show("Mislukt om de werkbonnen naar de server te verzenden");
+                }
+                Notification.show("Werkbonnen verzonden ");
+
+                Notification.show("Verwijderen van alle documenten en foto's");
+                syncService.deleteAllDocuments();
+                Notification.show("Verwijderen gelukt");
+
+//                Notification.show("Synchronisatie van werkbonnen op de server");
+//                try {
+//                    syncService.receiveWorkOrders();
+//                } catch (IOException e) {
+//                    Notification.show("Synchronisatie van werkbonnen op de server niet gelukt");
+//                }
+//                Notification.show("Synchronisatie van werkbonnen op de server gelukt");
+
+
+                Notification.show("Synchronisatie Klanten gestart");
+                syncService.syncCustomersFromServer();
+                Notification.show("Synchronisatie Klanten beïndigd");
+
+
+                Notification.show("Synchronisatie Artikelen gestart");
+                syncService.syncProducts();
+                Notification.show("Synchronisatie Artikelen beïndigd");
+
+                Notification.show("Synchronisatie Artikelmappen gestart");
+                syncService.syncProductFolders1();
+                syncService.syncProductFolders2();
+                syncService.syncProductFolders3();
+                syncService.syncProductFolders4();
+                syncService.syncProductFolders5();
+                syncService.syncProductFolders6();
+                syncService.syncProductFolders7();
+                Notification.show("Synchronisatie Artikelmappen beïndigd");
+
+                Notification.show("Synchronisatie Personeel gestart");
+                syncService.syncEmployeesFromServer();
+                Notification.show("Synchronisatie Personeel beïndigd");
             }
-            Notification.show("Werkbonnen verzonden ");
-
-            Notification.show("Verwijderen van alle documenten en foto's");
-            syncService.deleteAllDocuments();
-            Notification.show("Verwijderen gelukt");
-
-            Notification.show("Synchronisatie van werkbonnen op de server");
-            try {
-                syncService.receiveWorkOrders();
-            } catch (IOException e) {
-                Notification.show("Synchronisatie van werkbonnen op de server niet gelukt");
+            else{
+                Notification.show("Synchronisatie is uitgeschakeld");
             }
-            Notification.show("Synchronisatie van werkbonnen op de server gelukt");
-
-
-            Notification.show("Synchronisatie Klanten gestart");
-            syncService.syncCustomersFromServer();
-            Notification.show("Synchronisatie Klanten beïndigd");
-
-
-            Notification.show("Synchronisatie Artikelen gestart");
-            syncService.syncProducts();
-            Notification.show("Synchronisatie Artikelen beïndigd");
-
-            Notification.show("Synchronisatie Artikelmappen gestart");
-            syncService.syncProductFolders1();
-            syncService.syncProductFolders2();
-            syncService.syncProductFolders3();
-            syncService.syncProductFolders4();
-            syncService.syncProductFolders5();
-            syncService.syncProductFolders6();
-            syncService.syncProductFolders7();
-            Notification.show("Synchronisatie Artikelmappen beïndigd");
-
-            Notification.show("Synchronisatie Personeel gestart");
-            syncService.syncEmployeesFromServer();
-            Notification.show("Synchronisatie Personeel beïndigd");
-
         });
         logo.setHeight("100px");
 

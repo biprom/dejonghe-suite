@@ -57,6 +57,7 @@ import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.Period;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -94,6 +95,8 @@ public class CurrentInvoiceSubView extends VerticalLayout {
     Invoice invoiceBackToWorkOrder;
     Notification deleteInvoiceNotification;
     Notification addZeroPositionProductsToWorkAdressNotification;
+    Notification addReminderNotification;
+    Notification removeReminderNotification;
 
     Grid.Column<Invoice> columnProformaStatus;
     Grid.Column<Invoice> columnFinalStatus;
@@ -141,6 +144,8 @@ public class CurrentInvoiceSubView extends VerticalLayout {
         setUpNumberFormat();
         setUpfilters();
         createAddZeroPositionProductsToWorkAddress();
+        createRemoveReminderNotification();
+        createReminderNotification();
         createReportDelete();
         setUpDateRangeButton();
         setUpPaymentDialog();
@@ -313,7 +318,7 @@ public class CurrentInvoiceSubView extends VerticalLayout {
 
         filterName = new TextField();
         filterName.setWidth("100%");
-        filterName.setPlaceholder("Naam,BTW-nr,Werfadres,Stad,Straat");
+        filterName.setPlaceholder("Naam,BTW-nr,Werfadres,Stad,Straat,artikelen");
 
         proformaStatusFilter.setItems("Geen Status","Te controleren","Goedgekeurd","Afgekeurd","PO in aanvraag");
         finalStatusFilter.setItems(FINAL_INVOICE_STATUS.values());
@@ -658,16 +663,13 @@ public class CurrentInvoiceSubView extends VerticalLayout {
              if(item.getPaid() == false){
                  if(LocalDate.now().isAfter(item.getExpiryDate())){
                      item.setExpired(true);
-                     //invoiceService.save(item);
                  }
                  else{
                      item.setExpired(false);
-                     //invoiceService.save(item);
                  }
              }
              else{
                  item.setExpired(false);
-                 //invoiceService.save(item);
              }
              return getStatusBadgesforInvoice(item);
         }).setHeader("Status").setFlexGrow(2);
@@ -917,6 +919,11 @@ public class CurrentInvoiceSubView extends VerticalLayout {
             String retStr;
 
             String retVal = invoiceServices.generateInvoicePDFAndSendToBillit(item);
+            //if there are 0 positions -> save item as a Device
+            if(item.getProductList() != null && item.getProductList().size() > 0){
+                invoiceServices.checkZeroPositionsAndSaveThemToWorkAddress(item);
+            }
+
             try{
                 retInt = Integer.valueOf(retVal);
             }
@@ -938,8 +945,9 @@ public class CurrentInvoiceSubView extends VerticalLayout {
 
     private ComponentEventListener<ClickEvent<MenuItem>> sendFirstReminder(Invoice item) {
         return  (event) -> {
+            selectedInvoice = item;
+            addReminderNotification.open();
 
-            //copy pdf in clipboard
             invoiceServices.generateInvoicePDF(item);
 
             String pdfUrl = "http://localhost:8080/pdf";
@@ -962,11 +970,11 @@ public class CurrentInvoiceSubView extends VerticalLayout {
                 .catch(err => {
                     console.error("Fout bij kopiëren:", err);
                 });
-        """, pdfUrl)
+                """, pdfUrl)
             );
 
             String ontvanger = "klant@email.be";
-            String subject = "Herinnering factuur : 260002";
+            String subject = "Herinnering factuur : " + item.getInvoiceNumber();
             String body = """
                             Beste klant.
                             
@@ -1106,12 +1114,51 @@ public class CurrentInvoiceSubView extends VerticalLayout {
 
 
             badge.getStyle().set("font-weight", "600");
-            horizontalLayout.add(badge);
+
+            // now add Reminders
+            if(item.getReminderLevel() != 0){
+                Span reminderBadge = new Span(""+ item.getReminderLevel());
+                reminderBadge.getElement().getThemeList().add("badge warning");
+
+                reminderBadge.getStyle().set("color", "white");
+                reminderBadge.getStyle().set("width", "75px");
+                reminderBadge.getStyle().set("height", "40px");
+                reminderBadge.getStyle().set("font-size", "16px");
+                reminderBadge.getStyle().set("border-radius", "35px");
+
+                reminderBadge.getStyle().set("display", "flex");
+                reminderBadge.getStyle().set("align-items", "center");
+                reminderBadge.getStyle().set("justify-content", "center");
+
+                reminderBadge.getStyle().set(
+                        "background",
+                        "linear-gradient(135deg, rgba(230,150,30,0.95), rgba(200,110,0,0.90))"
+                );
+
+                reminderBadge.getStyle().set("box-shadow", "0 8px 24px rgba(220,130,20,0.45)");
+
+                reminderBadge.getStyle().set("font-weight", "600");
+
+                reminderBadge.getStyle().set("border", "1px solid rgba(255,255,255,0.25)");
+
+                reminderBadge.addClickListener(event -> {
+                    createRemoveReminderNotification().open();
+                });
+
+                horizontalLayout.add(badge,reminderBadge);
+            }
+            else{
+                horizontalLayout.add(badge);
+            }
         }
         else if ((item.getPartialPaid() != null) && (item.getPartialPaid() == true)){
-            period = Period.between(LocalDate.now(), item.getExpiryDate());
-            if(period.getDays() < 0 ){
-                Span badge = new Span(""+ period.plusDays(2).getDays());
+            long totalDays =
+                    ChronoUnit.DAYS.between(
+                            LocalDate.now(),
+                            item.getExpiryDate()
+                    );
+            if(totalDays < 0 ){
+                Span badge = new Span("DEELS BET. "+ Math.abs(totalDays));
                 badge.getElement().getThemeList().add("badge warning");
 
                 badge.getStyle().set("color", "white");
@@ -1134,7 +1181,42 @@ public class CurrentInvoiceSubView extends VerticalLayout {
                 badge.getStyle().set("font-weight", "600");
 
                 badge.getStyle().set("border", "1px solid rgba(255,255,255,0.25)");
-                horizontalLayout.add(badge);
+
+                // now add Reminders
+                if(item.getReminderLevel() != 0){
+                    Span reminderBadge = new Span(""+ item.getReminderLevel());
+                    reminderBadge.getElement().getThemeList().add("badge warning");
+
+                    reminderBadge.getStyle().set("color", "white");
+                    reminderBadge.getStyle().set("width", "75px");
+                    reminderBadge.getStyle().set("height", "40px");
+                    reminderBadge.getStyle().set("font-size", "16px");
+                    reminderBadge.getStyle().set("border-radius", "35px");
+
+                    reminderBadge.getStyle().set("display", "flex");
+                    reminderBadge.getStyle().set("align-items", "center");
+                    reminderBadge.getStyle().set("justify-content", "center");
+
+                    reminderBadge.getStyle().set(
+                            "background",
+                            "linear-gradient(135deg, rgba(230,150,30,0.95), rgba(200,110,0,0.90))"
+                    );
+
+                    reminderBadge.getStyle().set("box-shadow", "0 8px 24px rgba(220,130,20,0.45)");
+
+                    reminderBadge.getStyle().set("font-weight", "600");
+
+                    reminderBadge.getStyle().set("border", "1px solid rgba(255,255,255,0.25)");
+
+                    reminderBadge.addClickListener(event -> {
+                        createRemoveReminderNotification().open();
+                    });
+
+                    horizontalLayout.add(badge,reminderBadge);
+                }
+                else{
+                    horizontalLayout.add(badge);
+                }
             }
             else{
                 Span badge = new Span("DEELS BET.");
@@ -1165,9 +1247,13 @@ public class CurrentInvoiceSubView extends VerticalLayout {
 
         }
         else if ((item.getUnpaid() != null) && (item.getUnpaid() == true)){
-            period = Period.between(LocalDate.now(), item.getExpiryDate());
-            if(period.getDays() < 0 ){
-                Span badge = new Span(""+ period.plusDays(2).getDays());
+            long totalDays =
+                    ChronoUnit.DAYS.between(
+                            LocalDate.now(),
+                            item.getExpiryDate()
+                    );
+            if(totalDays < 0 ){
+                Span badge = new Span(""+ Math.abs(totalDays));;
                 badge.getElement().getThemeList().add("badge error");
 
                 badge.getStyle().set("color", "white");
@@ -1190,7 +1276,42 @@ public class CurrentInvoiceSubView extends VerticalLayout {
                 badge.getStyle().set("font-weight", "600");
 
                 badge.getStyle().set("border", "1px solid rgba(255,255,255,0.25)");
-                horizontalLayout.add(badge);
+
+                // now add Reminders
+                if(item.getReminderLevel() != 0){
+                    Span reminderBadge = new Span(""+ item.getReminderLevel());
+                    reminderBadge.getElement().getThemeList().add("badge warning");
+
+                    reminderBadge.getStyle().set("color", "white");
+                    reminderBadge.getStyle().set("width", "75px");
+                    reminderBadge.getStyle().set("height", "40px");
+                    reminderBadge.getStyle().set("font-size", "16px");
+                    reminderBadge.getStyle().set("border-radius", "35px");
+
+                    reminderBadge.getStyle().set("display", "flex");
+                    reminderBadge.getStyle().set("align-items", "center");
+                    reminderBadge.getStyle().set("justify-content", "center");
+
+                    reminderBadge.getStyle().set(
+                            "background",
+                            "linear-gradient(135deg, rgba(230,150,30,0.95), rgba(200,110,0,0.90))"
+                    );
+
+                    reminderBadge.getStyle().set("box-shadow", "0 8px 24px rgba(220,130,20,0.45)");
+
+                    reminderBadge.getStyle().set("font-weight", "600");
+
+                    reminderBadge.getStyle().set("border", "1px solid rgba(255,255,255,0.25)");
+
+                    reminderBadge.addClickListener(event -> {
+                        createRemoveReminderNotification().open();
+                    });
+
+                    horizontalLayout.add(badge,reminderBadge);
+                }
+                else{
+                    horizontalLayout.add(badge);
+                }
             }
             else{
                 Span badge = new Span("ONBETAALD");
@@ -1277,7 +1398,9 @@ public class CurrentInvoiceSubView extends VerticalLayout {
             }
 
             if (!filterName.getValue().isEmpty()) {
-                nameOk =(item.getWorkAddress().getStreet().toLowerCase().contains(filterName.getValue().toLowerCase())) ||
+                nameOk =
+                        (item.getProductList().stream().filter(x -> x.getInternalName() != null).anyMatch(x -> x.getInternalName().toLowerCase().contains(filterName.getValue().toLowerCase()))) ||
+                        (item.getWorkAddress().getStreet().toLowerCase().contains(filterName.getValue().toLowerCase())) ||
                         (item.getWorkAddress().getCity().toLowerCase().contains(filterName.getValue().toLowerCase())) ||
                         (item.getWorkAddress().getAddressName().toLowerCase().contains(filterName.getValue().toLowerCase())) ||
                         (item.getCustomer().getName().toLowerCase().contains(filterName.getValue().toLowerCase())) ||
@@ -1318,6 +1441,72 @@ public class CurrentInvoiceSubView extends VerticalLayout {
 
     }
 
+    public Notification createReminderNotification(){
+        addReminderNotification = new Notification();
+        addReminderNotification.setPosition(Notification.Position.MIDDLE);
+        addReminderNotification.addThemeVariants(NotificationVariant.LUMO_WARNING);
+
+        Icon icon = VaadinIcon.WARNING.create();
+        Button retryBtn = new Button("Annuleer",
+                clickEvent -> addReminderNotification.close());
+        retryBtn.getStyle().setMargin("0 0 0 var(--lumo-space-l)");
+
+        var layout = new HorizontalLayout(icon,
+                new Text("Ben je zeker dat je een herinnering wilt sturen"), retryBtn,
+                createReminder(addReminderNotification));
+        layout.setAlignItems(Alignment.CENTER);
+
+        addReminderNotification.add(layout);
+
+        return addReminderNotification;
+    }
+
+    private com.vaadin.flow.component.Component createReminder(Notification addReminderNotification) {
+        Button removeBtn = new Button("Stuur herinnering",
+                clickEvent -> {
+                    invoiceServices.addReminder(selectedInvoice);
+                    invoiceService.save(selectedInvoice);
+                    dataProvider.refreshAll();
+                    refreshTotals();
+                    addReminderNotification.close();
+                });
+        removeBtn.addThemeVariants(LUMO_TERTIARY_INLINE);
+        return removeBtn;
+    }
+
+    public Notification createRemoveReminderNotification(){
+        removeReminderNotification = new Notification();
+        removeReminderNotification.setPosition(Notification.Position.MIDDLE);
+        removeReminderNotification.addThemeVariants(NotificationVariant.LUMO_WARNING);
+
+        Icon icon = VaadinIcon.WARNING.create();
+        Button retryBtn = new Button("Annuleer",
+                clickEvent -> removeReminderNotification.close());
+        retryBtn.getStyle().setMargin("0 0 0 var(--lumo-space-l)");
+
+        var layout = new HorizontalLayout(icon,
+                new Text("Ben je zeker dat je een herinnering wilt verwijderen"), retryBtn,
+                createRemoveReminder(removeReminderNotification));
+        layout.setAlignItems(Alignment.CENTER);
+
+        removeReminderNotification.add(layout);
+
+        return removeReminderNotification;
+    }
+
+    private com.vaadin.flow.component.Component createRemoveReminder(Notification removeReminderNotification) {
+        Button removeBtn = new Button("Verwijder herinnering",
+                clickEvent -> {
+                    invoiceServices.removeReminder(selectedInvoice);
+                    invoiceService.save(selectedInvoice);
+                    dataProvider.refreshAll();
+                    refreshTotals();
+                    removeReminderNotification.close();
+                });
+        removeBtn.addThemeVariants(LUMO_TERTIARY_INLINE);
+        return removeBtn;
+    }
+
     public Notification createAddZeroPositionProductsToWorkAddress(){
         addZeroPositionProductsToWorkAdressNotification = new Notification();
         addZeroPositionProductsToWorkAdressNotification.setPosition(Notification.Position.MIDDLE);
@@ -1341,39 +1530,7 @@ public class CurrentInvoiceSubView extends VerticalLayout {
     private com.vaadin.flow.component.Component createAddZeroProducts(Notification addZeroPositionProductsToWorkAdressNotification) {
         Button removeBtn = new Button("Kopieer de 0- postitie artikelen",
                 clickEvent -> {
-                    if(selectedInvoice.getProductList()!= null && selectedInvoice.getProductList().size() > 0){
-                        selectedInvoice.getProductList().stream().filter(x -> (x.getPositionNumber() != null) && (x.getPositionNumber().matches("0"))).collect(Collectors.toList()).forEach(x -> {
-                            Optional<List<Customer>> customerByWorkAddress = customerService.getCustomerByWorkAddress(selectedInvoice.getWorkAddress());
-                            if(customerByWorkAddress.isPresent() && customerByWorkAddress.get().size() > 0){
-                                customerByWorkAddress.get().getFirst().getAddresses().stream().filter(address -> (address.getAddressName() != null) && (address.getAddressName().matches(selectedInvoice.getWorkAddress().getAddressName()))).collect(Collectors.toList()).forEach(address -> {
-                                    Device device = new Device();
-                                    device.setDeviceName(x.getInternalName());
-                                    device.setCode(x.getProductCode());
-                                    device.setInvoiceNumber(String.valueOf(selectedInvoice.getFinalInvoiceNumber()));
-                                    device.setDate(selectedInvoice.getInvoiceDate());
-                                    String level2 = x.getProductLevel2().getName();
-                                    if(level2.matches("Separatietechnieken")){
-                                        device.setType(x.getProductLevel3().getName());
-                                    }
-                                    else{
-                                        device.setType(level2);
-                                    }
-                                    String id = deviceService.save(device);
-
-                                    if (address.getCoupledDeviceList() == null) {
-                                        address.setCoupledDeviceList(new ArrayList<>());
-                                    }
-
-                                    address.getCoupledDeviceList().add(id);
-
-                                    customerService.save(customerByWorkAddress.get().getFirst());
-                                });
-                            }
-                            else{
-                                Notification.show("Geen klant gevonden met de naam van het werfadres!");
-                            }
-                        });
-                    }
+                    invoiceServices.checkZeroPositionsAndSaveThemToWorkAddress(selectedInvoice);
                     addZeroPositionProductsToWorkAdressNotification.close();
                 });
         removeBtn.addThemeVariants(LUMO_TERTIARY_INLINE);
@@ -1432,13 +1589,13 @@ public class CurrentInvoiceSubView extends VerticalLayout {
     public void viewAsProformaInvoices(){
         columnProformaStatus.setVisible(true);
         columnFinalStatus.setVisible(false);
-        totalAndVatColumn.setVisible(false);
+        totalAndVatColumn.setVisible(true);
         actionInvoiceColumn.setVisible(false);
         actionProformaColumn.setVisible(true);
-        totalVatColumn.setVisible(false);
-        totalNetColumn.setVisible(false);
+        totalVatColumn.setVisible(true);
+        totalNetColumn.setVisible(true);
         toPayColumn.setVisible(false);
-        proFormaInvoiceGrid.addClassName("my-grid-no-footer");
+        //proFormaInvoiceGrid.addClassName("my-grid-no-footer");
     }
 
     public void viewAsFinalWorkOrders(){

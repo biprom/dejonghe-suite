@@ -297,8 +297,6 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         setUpErrorDialog();
         updateSidebar();
         setUpWorkOrderHeaderBinder();
-
-
         Div wrapper = new Div();
         wrapper.setHeightFull();
         wrapper.addClassName("view-wrapper");
@@ -991,7 +989,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
     private void setUpUpload() {
         dropEnabledUpload.setWidthFull();
-        dropEnabledUpload.setAcceptedFileTypes("image/tiff", ".jpeg");
+        dropEnabledUpload.setAcceptedFileTypes("image/tiff", ".jpeg", ".jpg", ".png");
         dropEnabledUpload.addFileRejectedListener(event -> {
             String errorMessage = event.getErrorMessage();
 
@@ -1107,7 +1105,15 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         workOrderHeaderBinder.addValueChangeListener(workOrderHeader -> {
             try {
                 saveSelectedWorkOrder();
+                BinderValidationStatus<WorkOrderHeader> binderStatus = workOrderHeaderBinder.validate();
+                if (binderStatus.isOk()) {
+                    slideButton.setEnabled(true);
+                }
+                else{
+                    slideButton.setEnabled(false);
+                }
             } catch (ValidationException e) {
+                slideButton.setEnabled(false);
                 Notification.show("Kon de werkbon nog niet bewaren");
             }
         });
@@ -1145,16 +1151,23 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         workOrderBinder.addValueChangeListener(workOrder -> {
             try {
                 BinderValidationStatus<WorkOrder> binderStatus = workOrderBinder.validate();
+                if (binderStatus.isOk()) {
+                    slideButton.setEnabled(true);
+                }
+                else{
+                    slideButton.setEnabled(false);
+                }
 
                 boolean workhoursValid = ((!selectedWorkOrderTimes.isEmpty()));
                 if(workhoursValid && workhoursValid) {
                     saveSelectedWorkOrder();
                 }
                 else{
-
                 }
+
             } catch (ValidationException e) {
                 Notification.show("Kon de werkbon nog niet bewaren");
+                slideButton.setEnabled(false);
             }
         });
     }
@@ -1168,8 +1181,16 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         sidebarCollapsed = true;
 
         slideButton.addClickListener(event -> {
-            sidebarCollapsed = !sidebarCollapsed;
-            updateSidebar();
+            if(slideButton.isEnabled()){
+                sidebarCollapsed = !sidebarCollapsed;
+                updateSidebar();
+            }
+            else{
+                Notification show = Notification.show("Gelieve eerst de hoofding volledig in te vullen aub!");
+                show.setPosition(Notification.Position.MIDDLE);
+                show.addThemeVariants(NotificationVariant.LUMO_ERROR);
+            }
+
         });
         slideButton.setAriaLabel("Expand/collapse sidebar");
         slideButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
@@ -1466,7 +1487,6 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                         tfFleetHours.setValue("0");
                         tfFleetHours.setEnabled(false);
                     } else {
-                        //TODO recalc amout of hours
                         tfFleetHours.setValue("");
                         calcFleetHoursAgain();
                         tfFleetHours.setPlaceholder(String.valueOf(proposalAmountHoursCrane));
@@ -2180,13 +2200,14 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         newWorkOrder.setWorkDateTime(LocalDateTime.now());
         newWorkOrder.setWorkOrderStatus(WorkOrderStatus.RUNNING);
         newWorkOrder.setWorkAddress(selectedWorkOrder.getWorkAddress());
-        //newWorkOrder.setWorkLocation(selectedWorkOrder.getWorkLocation());
-        //newWorkOrder.setWorkType(selectedWorkOrder.getWorkType());
-        newWorkOrder.setWorkOrderStatus(selectedWorkOrder.getWorkOrderStatus());
+        newWorkOrder.setWorkLocation(selectedWorkOrder.getWorkLocation());
 
         newWorkOrder.setLinkedWorkOrders(new ArrayList<>());
+        newWorkOrder.setMasterEmployeeTeam1(starterWorkOrder.getMasterEmployeeTeam1());
 
         WorkOrderHeader newWorkOrderHeader1 = new WorkOrderHeader();
+        newWorkOrderHeader1.setDescription(selectedWorkOrder.getWorkOrderHeaderList().get(0).getDescription());
+        newWorkOrderHeader1.setWorkType(selectedWorkOrder.getWorkOrderHeaderList().get(0).getWorkType());
         WorkOrderHeader newWorkOrderHeader2 = new WorkOrderHeader();
         WorkOrderHeader newWorkOrderHeader3 = new WorkOrderHeader();
         WorkOrderHeader newWorkOrderHeader4 = new WorkOrderHeader();

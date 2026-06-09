@@ -43,9 +43,7 @@ public class Invoice {
     Boolean paid = false;
     Boolean partialPaid = false;
     Boolean unpaid = false;
-    Boolean reminder1 = false;
-    Boolean reminder2 = false;
-    Boolean reminder3 = false;
+    private int reminderLevel = 0;
     Double totalAmountTempPlaceholder;
     Boolean finalizeInvoice = false;
     String poNumber;

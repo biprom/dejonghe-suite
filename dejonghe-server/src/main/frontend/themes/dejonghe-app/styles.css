@@ -79,6 +79,11 @@ vaadin-combo-box:not([has-value])::part(input-field) {
     --lumo-primary-contrast-color: black;
 }
 
+.merged[checked]::part(checkbox) {
+    background-color: pink;
+    --lumo-primary-contrast-color: pink;
+}
+
 .my-checkbox[checked]::part(checkbox) {
     background-color: lightgray;
     --lumo-primary-contrast-color: black;

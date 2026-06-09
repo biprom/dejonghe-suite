@@ -160,39 +160,61 @@ public class FinishedWorkorderView extends VerticalLayout implements BeforeEnter
 
     private ComponentEventListener<ClickEvent<MenuItem>> getCoupleWorkOrderClickEvent() {
         return event -> {
-            Optional<Set<WorkOrder>> selectedWorkOrders = currtentWorkOrdersSubVieuw.getSelectedWorkOrders();
+            // First decouple all selected coupled workOrders
+            if (currtentWorkOrdersSubVieuw.getSelectedWorkOrders().isPresent() &&
+                    currtentWorkOrdersSubVieuw.getSelectedWorkOrders().get().size() > 0) {
 
-            // All selected WorkOrders need to be Starters to couple!
-            if (selectedWorkOrders.isPresent() && selectedWorkOrders.get().stream().allMatch(p -> p.getStarter())) {
+                currtentWorkOrdersSubVieuw.getSelectedWorkOrders().get().stream()
+                        .filter(x -> (x.getStarter() == true) && (x.getLinkedWorkOrders() != null) && (!x.getLinkedWorkOrders().isEmpty()))
+                        .forEach(x -> {
+                            List<String> copyList = new ArrayList<>(x.getLinkedWorkOrders()); // Kopie voor veilige verwijdering
 
-                // Find oldest WorkOrder to set as starter, rest is non-starter
-                Optional<WorkOrder> oldestWorkOrder = selectedWorkOrders.get().stream()
-                        .min(Comparator.comparing(WorkOrder::getWorkDateTime));
+                            for (String linkedWorkOrderId : copyList) {
+                                Optional<WorkOrder> optLinkedWorkOrder = workOrderService.getWorkOrderById(linkedWorkOrderId);
+                                if (optLinkedWorkOrder.isPresent()) {
+                                    optLinkedWorkOrder.get().setStarter(true);
+                                    workOrderService.save(optLinkedWorkOrder.get());
+                                }
 
-                if (oldestWorkOrder.isPresent()) {
-                    for (WorkOrder workOrder : selectedWorkOrders.get()) {
-                        if (!workOrder.getId().equals(oldestWorkOrder.get().getId())) {
-                            workOrder.setStarter(false);
-                            workOrderService.save(workOrder);
-
-                            // If oldest WorkOrder does not contain a linkedWorkOrders list, make one
-                            if (oldestWorkOrder.get().getLinkedWorkOrders() == null) {
-                                oldestWorkOrder.get().setLinkedWorkOrders(new ArrayList<>());
+                                x.getLinkedWorkOrders().remove(linkedWorkOrderId);
                             }
 
-                            // Add id to oldest WorkOrder's linkedWorkOrders
-                            oldestWorkOrder.get().getLinkedWorkOrders().add(workOrder.getId());
+                            workOrderService.save(x);
+                        });
+            }
+
+            Set<WorkOrder> sortedWorkOrders = currtentWorkOrdersSubVieuw.getSelectedWorkOrders()
+                    .map(set -> set.stream()
+                            .sorted(
+                                    Comparator.comparing(
+                                            WorkOrder::getWorkDateTime,
+                                            Comparator.nullsLast(Comparator.naturalOrder())
+                                    )
+                            )
+                            .collect(Collectors.toCollection(LinkedHashSet::new)))
+                    .orElseGet(LinkedHashSet::new);
+
+            // Zoek oudste werkorder om als opnieuw starter in te stellen
+            Optional<WorkOrder> oldestWorkOrder = sortedWorkOrders.stream()
+                    .min(Comparator.comparing(WorkOrder::getWorkDateTime));
+
+            if (oldestWorkOrder.isPresent()) {
+                for (WorkOrder workOrder : sortedWorkOrders) {
+                    if (!workOrder.getId().equals(oldestWorkOrder.get().getId())) {
+                        workOrder.setStarter(false);
+                        workOrderService.save(workOrder);
+
+                        // Als de oudste werkorder geen linkedWorkOrders-lijst heeft, maak een nieuwe
+                        if (oldestWorkOrder.get().getLinkedWorkOrders() == null) {
+                            oldestWorkOrder.get().setLinkedWorkOrders(new ArrayList<>());
                         }
+
+                        // Voeg ID toe aan de linkedWorkOrders van de oudste werkorder
+                        oldestWorkOrder.get().getLinkedWorkOrders().add(workOrder.getId());
                     }
-
-                    workOrderService.save(oldestWorkOrder.get());
-                    loadData();
                 }
-
-            } else {
-                Notification notification = Notification.show(
-                        "Werkbonnen die worden gekoppeld moeten van het type 'starter' zijn");
-                notification.addThemeVariants(NotificationVariant.LUMO_WARNING);
+                workOrderService.save(oldestWorkOrder.get()); // Opslaan van laatste wijzigingen
+                loadData(); // Herladen van data
             }
         };
     }

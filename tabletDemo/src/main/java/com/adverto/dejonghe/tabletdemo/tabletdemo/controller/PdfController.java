@@ -1,4 +1,4 @@
-package com.adverto.dejonghe.server.Controllers;
+package com.adverto.dejonghe.tabletdemo.tabletdemo.controller;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.InputStreamResource;
@@ -44,30 +44,6 @@ public class PdfController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
-
-    @GetMapping("/attachement")
-    public ResponseEntity<Resource> getAttachement() {
-        try {
-            File file = new File(rootFolder + "all_attachments.pdf");
-
-            if (!file.exists()) {
-                return ResponseEntity.notFound().build();
-            }
-
-            InputStreamResource resource = new InputStreamResource(new FileInputStream(file));
-
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=attachement.pdf")
-                    .contentType(MediaType.APPLICATION_PDF)
-                    .contentLength(file.length())
-                    .body(resource);
-
-        } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-
 
     public void setPdfNaam(String pdfNaam) {
         this.pdfNaam = pdfNaam;

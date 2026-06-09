@@ -54,14 +54,22 @@ public class Product implements Serializable {
     private Boolean bWorkHour = Boolean.FALSE;
     private Boolean bComment = Boolean.FALSE;
     private Boolean bTravel = Boolean.FALSE;
+
+    //for making an attachement
     private Boolean bSelectedForAttachement = false;
     private Boolean bAttachement = false;
     private LocalDate attachementNumber;
+
+    //for making a merged products (total product for a couple products)
+    private Boolean mergedProduct = false;
+    List<Product>mergedProducts;
+
     private Boolean remark = false;
     private List<Product>setList;
     List<String>imageList;
     List<String>pdfList;
     List<ProductLink>linkDocumentList;
     boolean boldMode = false;
+    boolean selectedMode = false;
 
 }

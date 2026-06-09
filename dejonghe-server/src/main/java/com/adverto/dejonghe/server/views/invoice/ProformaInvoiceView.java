@@ -114,16 +114,9 @@ public class ProformaInvoiceView extends VerticalLayout implements BeforeEnterOb
         actionBar.addThemeVariants(MenuBarVariant.LUMO_DROPDOWN_INDICATORS);
         MenuItem actie = actionBar.addItem("Actie".toUpperCase());
         actie.getElement().getClassList().add("menu-as-button");
-        actie.getSubMenu().addItem("Zet terug naar werkbon",backAsWorkorders());
         actie.getSubMenu().addItem("Verwijder geselecteerde proforma",getRemoveOrderClickEvent());
         actionBarLayout.add(newButton,actionBar);
         return actionBarLayout;
-    }
-
-    private ComponentEventListener<ClickEvent<MenuItem>> backAsWorkorders() {
-        return  (event) -> {
-            currentInvoiceSubView.showBackToWorkOrderNotification();
-        };
     }
 
     private ComponentEventListener<ClickEvent<MenuItem>> getRemoveOrderClickEvent() {

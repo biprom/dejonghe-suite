@@ -38,7 +38,9 @@ import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.converter.StringToDoubleConverter;
 import com.vaadin.flow.data.provider.SortDirection;
 import com.vaadin.flow.router.*;
+import com.vaadin.flow.spring.annotation.SpringComponent;
 import org.apache.poi.ss.util.CellReference;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.vaadin.lineawesome.LineAwesomeIconUrl;
@@ -62,9 +64,8 @@ import static com.vaadin.flow.component.button.ButtonVariant.LUMO_TERTIARY_INLIN
 @Menu(order = 0, icon = LineAwesomeIconUrl.COG_SOLID)
 public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnterObserver {
 
-    //@Value( "${linkSpreadsheetBulk}" )
-    //private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("/Users/bramvandenberghe/Desktop/dejonghe.xlsx");
-    private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("D:\\Algemeen\\Documentatie\\Dejonghe-techniek\\Database\\dejonghe.xlsx\\dejonghe.xlsx");
+    private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("/Users/bramvandenberghe/Desktop/dejonghe.xlsx");
+    //private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("D:\\Algemeen\\Documentatie\\Dejonghe-techniek\\Database\\dejonghe.xlsx\\dejonghe.xlsx");
 
     Notification deleteProductNotification;
 
@@ -83,6 +84,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     private SupplierService supplierService;
 
     private SetView setView;
+    private OrderSubView orderSubView;
     private CoupledProductView coupledProductView;
     private MoveView moveView;
     private CopyView copyView;
@@ -102,6 +104,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     private List<ProductLevel7>level7List;
 
     private Dialog bulkDialog;
+    private Dialog orderDialog;
     private Dialog configureSetDialog;
     private Dialog configureCoupledDialog;
     private Dialog newArticleDialog;
@@ -116,6 +119,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     private final Grid<Product> grid = new Grid<>(Product.class, false);
     private List<Product> productsForGrid;
 
+    private Button clearFilterButton;
     private TextField tfGeneralFilter;
     private TextField tfFolderFilter;
     private TextField tfProductCode;
@@ -199,6 +203,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                                   ProductLevel7Service productLevel7Service,
                                   SupplierService supplierService,
                                   SetView setView,
+                                  OrderSubView orderSubView,
                                   CoupledProductView coupledProductView,
                                   MoveView moveView,
                                   CopyView copyView,
@@ -221,6 +226,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         this.productLevel7Service = productLevel7Service;
         this.supplierService = supplierService;
         this.setView = setView;
+        this.orderSubView = orderSubView;
         this.coupledProductView = coupledProductView;
         this.moveView = moveView;
         this.copyView = copyView;
@@ -242,7 +248,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         setUpPdfDialog();
         setUpSetSimpleDialog();
         createReportError();
-        //setUpSpreadSheet();
+        setUpSpreadSheet();
 
         this.getStyle()
                 .set("display", "flex")
@@ -278,6 +284,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         setUpBinder();
         setUpProductLevelComboBoxes();
         setUpBulkDialog();
+        setUpOrderDialog();
         setUpConfigureSetDialog();
         setUpConfigureCoupledProductDialog();
         setUpCopyDialog();
@@ -413,9 +420,19 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
 
 
     private void setUpNumberFormat() {
-        df.setMinimumFractionDigits(2);
         df.setMaximumFractionDigits(3);
         df.setGroupingUsed(true);
+    }
+
+    public static String formatAmount(double bedrag) {
+        NumberFormat df = NumberFormat.getNumberInstance(new Locale("nl", "BE"));
+
+        int decimals = Math.abs(bedrag) < 0.10 ? 3 : 2;
+
+        df.setMinimumFractionDigits(decimals);
+        df.setMaximumFractionDigits(decimals);
+
+        return df.format(bedrag);
     }
 
     private void setUpPdfDialog() {
@@ -471,6 +488,26 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
             refreshItemsInGrid();
         });
         showImageDialog.getFooter().add(cancelButton);
+    }
+
+    private void setUpOrderDialog() {
+        orderDialog = new Dialog();
+        orderDialog.setWidth("50%");
+        orderDialog.setHeight("50%");
+
+        orderDialog.add(orderSubView);
+
+        Button cancelButton = new Button("Sluiten", e -> {
+            orderDialog.close();
+        });
+
+        orderDialog.getFooter().add(cancelButton);
+
+        orderDialog.addOpenedChangeListener(event -> {
+            if (!event.isOpened()) {
+                grid.deselectAll();
+            }
+        });
     }
 
     private void setUpConfigureSetDialog() {
@@ -650,6 +687,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     }
 
     private void setUpFilter() {
+
         tfGeneralFilter.setWidth("100%");
         tfGeneralFilter.addValueChangeListener(e -> {
             if (updating.get()) return;
@@ -689,6 +727,11 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                     ((item.getProductCode() != null) && (item.getProductCode().toLowerCase().contains(e.getValue().toLowerCase())))||
                     ((item.getComment() != null) && (item.getComment().toLowerCase().contains(e.getValue().toLowerCase())))).collect(Collectors.toList()));
             updating.set(false);
+        });
+
+        clearFilterButton.addClickListener(e -> {
+            tfFolderFilter.setValue("");
+            tfGeneralFilter.setValue("");
         });
     }
 
@@ -761,7 +804,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         purchasePriceGrid.addComponentColumn(item -> {
             TextField textField = new TextField();
             if(item.getQuantity() != null){
-                textField.setValue(df.format(item.getQuantity()));
+                textField.setValue(formatAmount(item.getQuantity()));
             }
             else{
                 textField.setValue("0,0");
@@ -801,7 +844,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         purchasePriceGrid.addComponentColumn(item -> {
             TextField textField = new TextField();
             if(item.getPrice() != null){
-                textField.setValue(df.format(item.getPrice()));
+                textField.setValue(formatAmount(item.getPrice()));
             }
             else{
                 textField.setValue("0,0");
@@ -1040,7 +1083,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         bulkDialog.setHeaderTitle(
                 String.format("Voeg Bulk toe"));
         bulkDialog.add("Ben je zeker dat je meerdere artikelen wilt kopieren vanuit Excel?");
-        //bulkDialog.add(spreadsheet);
+        bulkDialog.add(spreadsheet);
         bulkDialog.add(getItemGrid());
         Button saveDialogButton = new Button("Bewaar", (e) -> {
             importBulkLevelList.clear();
@@ -2051,36 +2094,37 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 .setFlexGrow(5);
 
         grid.sort(List.of(new GridSortOrder<>(internalNameColumn, SortDirection.ASCENDING)));
-        purchaceColumn = grid.addColumn(item -> {
-            if(item.getPurchasePrice() != null){
-                return "€ " + df.format(item.getPurchasePrice());
-            }
-            else{
-                return "-";
-            }
-        }).setHeader("Aankoop").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
-
-        marginColumn = grid.addColumn(item -> {
-            if((item.getSellMargin() != null) && (!item.getSellMargin().isNaN())){
-                return df.format(item.getSellMargin());
-            }
-            else{
-                return "-";
-            }
-        }).setHeader("Marge A").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
 
         sellComumn = grid.addColumn(item -> {
             if((item.getSellPrice() != null) && (!item.getSellPrice().isNaN())){
-                return "€ " + df.format(item.getSellPrice());
+                return "€ " + formatAmount(item.getSellPrice());
             }
             else{
                 return "-";
             }
         }).setHeader("Verkoop A").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
 
+        marginColumn = grid.addColumn(item -> {
+            if((item.getSellMargin() != null) && (!item.getSellMargin().isNaN())){
+                return formatAmount(item.getSellMargin());
+            }
+            else{
+                return "-";
+            }
+        }).setHeader("Marge A").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
+
+        sellIndustryComumn = grid.addColumn(item -> {
+            if(item.getSellPriceIndustry() != null){
+                return "€ " + formatAmount(item.getSellPriceIndustry());
+            }
+            else{
+                return "-";
+            }
+        }).setHeader("Verkoop I").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
+
         marginIndustryColumn = grid.addColumn(item -> {
             if(item.getSellMarginIndustry() != null){
-                return df.format(item.getSellMarginIndustry());
+                return formatAmount(item.getSellMarginIndustry());
             }
             else{
                 return "-";
@@ -2088,14 +2132,15 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         }).setHeader("Marge I").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
         marginIndustryColumn.setClassNameGenerator(item -> "industry-column");
 
-        sellIndustryComumn = grid.addColumn(item -> {
-            if(item.getSellPriceIndustry() != null){
-                return "€ " + df.format(item.getSellPriceIndustry());
+        purchaceColumn = grid.addColumn(item -> {
+            if(item.getPurchasePrice() != null){
+                return "€ " + formatAmount(item.getPurchasePrice());
             }
             else{
                 return "-";
             }
-        }).setHeader("Verkoop I").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
+        }).setHeader("Aankoop").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
+
 
         commentColumn = grid.addColumn("comment").setHeader("Commentaar").setWidth("330px").setFlexGrow(1).setResizable(true);
         moqColumn = grid.addColumn(item -> {
@@ -2365,6 +2410,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         hLayout1.setWidth("100%");
         HorizontalLayout hLayout2 = new HorizontalLayout();
         hLayout2.setWidth("100%");
+        clearFilterButton = new Button(VaadinIcon.CLOSE.create());
         tfGeneralFilter = new TextField("");
         tfGeneralFilter.setPlaceholder("General filter");
         tfFolderFilter = new TextField("");
@@ -2403,7 +2449,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 //setUpHorizontalLayoutFor(cbProductLevel6,bAddProductLevel6,E_Product_Level.PRODUCTLEVEL6),
                     //setUpHorizontalLayoutFor(cbProductLevel7,bAddProductLevel7,E_Product_Level.PRODUCTLEVEL7),
                 );
-        hLayout2.add(tfGeneralFilter,tfFolderFilter, createButtonLayout());
+        hLayout2.add(clearFilterButton,tfGeneralFilter,tfFolderFilter, createButtonLayout());
 
         editorDiv.add(hLayout1);
         editorDiv.add(hLayout2);
@@ -2504,7 +2550,8 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         actionBar.addThemeVariants(MenuBarVariant.LUMO_DROPDOWN_INDICATORS);
         MenuItem actie = actionBar.addItem("Actie");
         actie.getElement().getClassList().add("menu-as-button");
-        actie.getSubMenu().addItem("Bewerk set", e -> openEditSet(50.0));
+        actie.getSubMenu().addItem("Bestel artikel", e -> orderProduct());
+        actie.getSubMenu().addItem("Bewerk set", e -> openEditSet());
         actie.getSubMenu().addItem("Bewerk gekoppelde artikelen", e -> openEditCoupledProduct());
         actie.getSubMenu().addItem("Voeg toe", e -> changeProduct());
         actie.getSubMenu().addItem("Verplaats artikel", e -> moveProduct());
@@ -2543,7 +2590,20 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         copyView.goToSelectedFolder(result1, result2, result3, result4, result5);
     }
 
-    private void openEditSet(Double value) {
+    private void orderProduct(){
+        Set<Product> selectedItems = grid.getSelectedItems();
+        if(selectedItems.size() == 1){
+            Product productToOrder = selectedItems.stream().findFirst().get();
+            orderSubView.setSelectedProdcut(productToOrder);
+            orderSubView.setCloseAction(() -> orderDialog.close());
+            orderDialog.open();
+        }
+        else{
+            Notification.show("Gelieve 1 artikel te selectern om te bestellen");
+        }
+    }
+
+    private void openEditSet() {
         configureSetDialog.open();
         setView.setSelectedProductForSet(selectedProduct);
     }

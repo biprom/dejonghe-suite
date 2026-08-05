@@ -43,6 +43,7 @@ public class SupplierView extends VerticalLayout implements BeforeEnterObserver 
     VirtualList<List<Supplier>> supplierVirtialList;
     Optional<List<Supplier>> suppliers;
     TextField searchField;
+    Button clearFilterButton;
 
     Dialog editDialog;
     Notification deleteWorkorderNotification;
@@ -231,6 +232,9 @@ public class SupplierView extends VerticalLayout implements BeforeEnterObserver 
 
     private HorizontalLayout getSearchBar() {
         HorizontalLayout searchLayout = new HorizontalLayout();
+
+        clearFilterButton = new Button(VaadinIcon.CLOSE.create());
+
         searchLayout.setWidth("100%");
         searchField = new TextField();
         searchField.setWidth("100%");
@@ -253,7 +257,12 @@ public class SupplierView extends VerticalLayout implements BeforeEnterObserver 
                 Notification.show("Geen leveranciers gevonden");
             }
         });
-        searchLayout.add(searchField);
+
+        clearFilterButton.addClickListener(e -> {
+            searchField.setValue("");
+        });
+
+        searchLayout.add(clearFilterButton,searchField);
         return searchLayout;
     }
 

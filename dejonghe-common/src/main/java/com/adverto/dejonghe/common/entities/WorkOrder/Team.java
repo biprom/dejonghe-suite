@@ -18,7 +18,6 @@ import java.util.List;
 public class Team {
 
     String technicians;
-    String comment;
     String vihicle;
     String roadTunnelTax;
     List<WorkOrderTimePdfDTO> workHours;

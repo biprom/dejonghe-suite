@@ -52,6 +52,23 @@ public class EmployeeCard extends Card {
         subtitle.addClassName("card-subtitle");
         this.add(subtitle);
 
+        Div prio = new Div(new Text(String.valueOf(employee.getPriority())));
+
+        prio.getStyle()
+                .set("background-color", "#FFC107")
+                .set("color", "#1E2A44")
+                .set("border-radius", "50%")
+                .set("min-width", "48px")
+                .set("min-height", "48px")
+                .set("display", "flex")
+                .set("align-items", "center")
+                .set("justify-content", "center")
+                .set("font-weight", "700")
+                .set("font-size", "20px")
+                .set("box-shadow", "0 2px 4px rgba(0,0,0,0.15)");
+
+        this.addToFooter(prio);
+
         this.addToFooter(getActionMenu());
     }
 

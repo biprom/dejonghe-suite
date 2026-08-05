@@ -57,6 +57,7 @@ import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Route("eindfacturatie/:id")
 @Menu(order = 0, icon = LineAwesomeIconUrl.EURO_SIGN_SOLID)
@@ -92,7 +93,7 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
     Card customerCard;
     Span badge;
     TextField tfInvoiceNumber;
-    TextField tfPoNumber;
+    TextArea tfPoNumber;
     DatePicker invoiceDatePicker;
     DatePicker expiryDatePicker;
     TextArea invoiceCommentTextArea;
@@ -125,6 +126,8 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
     VerticalLayout vLayoutFirstStepHeader;
     private Registration eventRegistration;
     private UI ui;
+
+    private boolean ignoreAddressChange = false;
 
 
     private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("/Users/bramvandenberghe/Desktop/facturatie.xlsx");
@@ -323,6 +326,7 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
             } catch (ValidationException e) {
                 Notification.show("Kan de factuur niet genereren");
             }
+            getUI().ifPresent(ui -> ui.navigate(ProformaInvoiceView.class));
         });
         saveButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         return saveButton;
@@ -535,8 +539,8 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
         return tfInvoiceNumber;
     }
 
-    private TextField getPoNumber(){
-        tfPoNumber = new TextField();
+    private TextArea getPoNumber(){
+        tfPoNumber = new TextArea();
         tfPoNumber.setPlaceholder("Gelieve hier het PO- nummer in te geven");
         tfPoNumber.setWidthFull();
         return tfPoNumber;
@@ -570,87 +574,156 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
     }
 
     private ComboBox getAddressComboBox() {
+        addressComboBox.setWidthFull();
         allCustomerAddresses = customerService.getAllCustomerAdresses();
         if (allCustomerAddresses.isPresent()) {
             allCustomerAddresses.get().sort(Comparator.comparing(Address::getCustomerName));
             addressComboBox.setItems(allCustomerAddresses.get());
-        }
-        else{
+        } else {
             Notification.show("Geen Klanten in de database");
         }
         addressComboBox.setPlaceholder("Gelieve een klant/adres te selecteren");
         addressComboBox.setItemLabelGenerator(address -> {
-            if((address.getAddressName() != null) && (address.getAddressName().length() > 0)) {
-                if((address.getCustomerName() != null) && (!address.getCustomerName().matches(address.getAddressName()))) {
+            if ((address.getAddressName() != null) && (address.getAddressName().length() > 0)) {
+                if ((address.getCustomerName() != null) && (!address.getCustomerName().matches(address.getAddressName()))) {
                     return address.getCustomerName() + " / " + address.getAddressName();
-                }
-                else{
+                } else {
                     return address.getAddressName();
                 }
 
-            }
-            else{
+            } else {
                 return address.getCustomerName();
             }
         });
         addressComboBox.addValueChangeListener(event -> {
-           Optional<List<Customer>>selectedCustomerList  = customerService.getCustomerByWorkAddress(event.getValue());
-            if(!selectedCustomerList.isEmpty() && selectedCustomerList.get().size() == 1){
-                selectProductSubView.setSelectedCustmer(selectedCustomerList.get().get(0));
-                selectedCustomer = selectedCustomerList.get().get(0);
+
+            if (ignoreAddressChange || !event.isFromClient()) {
+                return;
+            }
+
+            Address oldAddress = event.getOldValue();
+            Address newAddress = event.getValue();
+
+            // Alleen tonen indien nodig
+            if (selectedInvoice.getProductList() != null
+                    && selectedInvoice.getProductList().stream()
+                    .filter(item -> !item.getBComment())
+                    .findAny()
+                    .isPresent()) {
+
+                Dialog dialog = new Dialog();
+                dialog.setHeaderTitle("Klant wijzigen");
+
+                dialog.add("De geselecteerde klant wijzigen kan invloed hebben op de producten en prijzen. Wil je doorgaan?");
+
+                Button cancel = new Button("Annuleren", e -> {
+                    ignoreAddressChange = true;
+                    addressComboBox.setValue(oldAddress);
+                    ignoreAddressChange = false;
+                    dialog.close();
+                });
+
+                Button ok = new Button("Doorgaan", e -> {
+                    dialog.close();
+
+                    updateCustomer(newAddress);
+                    selectProductSubView.recalcSelectedItemsWithNewCustomer();
+                    try {
+                        selectedInvoice.setCustomer(selectedCustomer);
+                        invoiceBinder.writeBean(selectedInvoice);
+                        selectedInvoice.setProductList(selectProductSubView.getSelectedProductList());
+                        invoiceService.save(selectedInvoice);
+                    } catch (ValidationException val) {
+                        Notification.show("Kon dit document nog niet bewaren");
+                    }
+                    UI.getCurrent().getPage().reload();
+                });
+
+                HorizontalLayout footer = new HorizontalLayout();
+
+                Div spacer = new Div();
+                footer.setWidthFull();
+                footer.expand(spacer);
+
+                footer.add(cancel, spacer, ok);
+
+                dialog.getFooter().add(footer);
+                dialog.open();
+
+                return;
+            }
+
+            updateCustomer(newAddress);
+        });
+
+        return addressComboBox;
+    }
+
+    private void updateCustomer(Address address) {
+
+        Optional<List<Customer>>selectedCustomerList  = customerService.getCustomerByWorkAddress(address);
+        if(!selectedCustomerList.isEmpty() && selectedCustomerList.get().size() == 1){
+            selectProductSubView.setSelectedCustmer(selectedCustomerList.get().get(0));
+            selectedCustomer = selectedCustomerList.get().get(0);
+        }
+        else{
+            Notification notification = new Notification();
+            notification.setText("Dit werkadres bevat meerdere klanten!");
+        }
+        if(selectedCustomer != null){
+            customerCard.removeAll();
+            customerCard.setTitle(new Div(selectedCustomer.getName()));
+            customerInfoLayout.setSpacing(false);
+            customerInfoLayout.removeAll();
+            customerInfoLayout.add(new Div(selectedCustomer.getVatNumber()));
+            try{
+                Address invoiceAddress = selectedCustomer.getAddresses().stream().filter(x -> (x.getInvoiceAddress() != null) && (x.getInvoiceAddress() == true)).findFirst().get();
+                customerInfoLayout.add(new Div(invoiceAddress.getStreet()));
+                customerInfoLayout.add(new Div(invoiceAddress.getCity()));
+            }
+            catch (Exception e){
+
+            }
+            customerCard.setSubtitle(customerInfoLayout);
+            customerCard.add(selectedCustomer.getComment());
+            if((selectedCustomer.getAlertMessage() != null) && (selectedCustomer.getAlertMessage().length() > 0)){
+                badge.setText("Alarm");
+                badge.getElement().getThemeList().clear();
+                badge.getElement().getThemeList().add("badge error");
             }
             else{
-                Notification notification = new Notification();
-                notification.setText("Dit werkadres bevat meerdere klanten!");
-            }
-            if(selectedCustomer != null){
-                customerCard.removeAll();
-                customerCard.setTitle(new Div(selectedCustomer.getName()));
-                customerInfoLayout.setSpacing(false);
-                customerInfoLayout.removeAll();
-                customerInfoLayout.add(new Div(selectedCustomer.getVatNumber()));
-                try{
-                    Address invoiceAddress = selectedCustomer.getAddresses().stream().filter(address -> (address.getInvoiceAddress() != null) && (address.getInvoiceAddress() == true)).findFirst().get();
-                    customerInfoLayout.add(new Div(invoiceAddress.getStreet()));
-                    customerInfoLayout.add(new Div(invoiceAddress.getCity()));
-                }
-                catch (Exception e){
-
-                }
-                customerCard.setSubtitle(customerInfoLayout);
-                customerCard.add(selectedCustomer.getComment());
-                if((selectedCustomer.getAlertMessage() != null) && (selectedCustomer.getAlertMessage().length() > 0)){
-                    badge.setText("Alarm");
-                    badge.getElement().getThemeList().clear();
-                    badge.getElement().getThemeList().add("badge error");
-                }
-                else{
-                    badge.setText("Geen Alarm");
-                    badge.getElement().getThemeList().clear();
-                    badge.getElement().getThemeList().add("badge success");
-                }
-                customerCard.setHeaderSuffix(badge);
-
-                if((selectedCustomer.getBProjectCustomer() == null) || (selectedCustomer.getBProjectCustomer() == false)){
-                    projectCustomerAddressComboBox.setVisible(false);
-                }
-                else{
-                    projectCustomerAddressComboBox.setVisible(true);
-                }
-            }
-            else{
-                customerCard.removeAll();
-                customerCard.setTitle(new Div("N/A"));
-                customerCard.setSubtitle(new Div("N/A"));
-                customerCard.add("N/A");
-                badge.setText("N/A");
+                badge.setText("Geen Alarm");
                 badge.getElement().getThemeList().clear();
                 badge.getElement().getThemeList().add("badge success");
-                customerCard.setHeaderSuffix(badge);
             }
-        });
-        addressComboBox.setWidthFull();
-        return addressComboBox;
+            customerCard.setHeaderSuffix(badge);
+
+            if((selectedCustomer.getBProjectCustomer() == null) || (selectedCustomer.getBProjectCustomer() == false)){
+                projectCustomerAddressComboBox.setVisible(false);
+            }
+            else{
+                projectCustomerAddressComboBox.setVisible(true);
+            }
+        }
+        else{
+            customerCard.removeAll();
+            customerCard.setTitle(new Div("N/A"));
+            customerCard.setSubtitle(new Div("N/A"));
+            customerCard.add("N/A");
+            badge.setText("N/A");
+            badge.getElement().getThemeList().clear();
+            badge.getElement().getThemeList().add("badge success");
+            customerCard.setHeaderSuffix(badge);
+        }
+
+        try {
+            selectedInvoice.setCustomer(selectedCustomer);
+            invoiceBinder.writeBean(selectedInvoice);
+            selectedInvoice.setProductList(selectProductSubView.getSelectedProductList());
+            invoiceService.save(selectedInvoice);
+        } catch (ValidationException e) {
+            Notification.show("Kon dit document nog niet bewaren");
+        }
     }
 
     private void setUpMainSplitLayout() {
@@ -865,45 +938,6 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
         }
     }
 
-//    @PostConstruct
-//    private void init() {
-//        System.out.println("init called: " + this);
-//        listener.addEventConsumer(event -> {
-//            // UI-thread safe update
-//
-//            UI.getCurrent().access(() -> {
-//                try {
-//                    selectedInvoice.setCustomer(selectedCustomer);
-//                    invoiceBinder.writeBean(selectedInvoice);
-//                    selectedInvoice.setProductList(selectProductSubView.getSelectedProductList());
-//                    invoiceService.save(selectedInvoice);
-//
-//                    //selectProductSubView.setSelectedProductList(selectedInvoice.getProductList());
-//                    //selectProductSubView.getSelectedProductGrid().getDataProvider().refreshAll();
-//
-//                    if(event.getMessage().matches("Product verwijderd")){
-//                        Notification notification = Notification.show("Artikel is verwijderd.");
-//                        notification.addThemeVariants(NotificationVariant.LUMO_ERROR);
-//                    }
-//                    else if(event.getMessage().matches("Product toegevoegd")){
-//                        Notification notification = Notification.show("Artikel is toegevoegd.");
-//                        notification.addThemeVariants(NotificationVariant.LUMO_SUCCESS);
-//                    }
-//                    else{
-//                        //do nothing
-//                    }
-//
-//                }
-//                catch (ValidationException e) {
-//                    Notification notification = Notification.show("Product niet toegevoegd gelieve eerst de hoofding in te vullen aub.");
-//                    notification.addThemeVariants(NotificationVariant.LUMO_ERROR);
-//                    selectProductSubView.getSelectedProductList().remove(selectProductSubView.getSelectedProductList().get(selectProductSubView.getSelectedProductList().size() - 1));
-//                    selectProductSubView.getSelectedProductGrid().getDataProvider().refreshAll();
-//                }
-//            });
-//        });
-//    }
-
 
     @Override
     public void setParameter(BeforeEvent beforeEvent,@OptionalParameter String parameter) {
@@ -922,18 +956,19 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
 
 
         if ((id != null) && (id.length()>0) && (!(id.matches("none")))) {
-            //Open WorkOrder by an other page and search WorkOrder by linkParameter.
-            //So for every page with CurrentWorkOrderSubView in it that will open a clicked item in WorkOrderView
+            //Open Invoice by an other page and search Invoice by linkParameter.
+            //So for every page with CurrentInvoiceSubView in it that will open a clicked item in WorkOrderView
             linkParameter = id;
             Optional<Invoice> optionalInvoiceById = invoiceService.getInvoiceById(linkParameter);
             if (optionalInvoiceById.isPresent()) {
                 selectedInvoice = optionalInvoiceById.get();
-                selectProductSubView.setSelectedProductList(selectedInvoice.getProductList());
                 selectProductSubView.setUserFunctionAndDocumentDate(UserFunction.ADMIN, selectedInvoice.getInvoiceDate());
                 selectedCustomer = selectedInvoice.getCustomer();
                 selectProductSubView.setSelectedCustmer(selectedCustomer);
                 invoiceBinder.readBean(selectedInvoice);
                 if(selectedInvoice.getBFinalInvoice() != null && selectedInvoice.getBFinalInvoice() == true){
+                    //products doesn't have to be checked if it has the same price as the DB
+                    selectProductSubView.setSelectedProductList(selectedInvoice.getProductList());
                     invoiceCommentTextArea.setVisible(false);
                     checkbApproved.setVisible(false);
                     checkbRejected.setVisible(false);
@@ -943,6 +978,8 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
                     openedFromFinalInvoiceOrNot = true;
                 }
                 else{
+                    //products have to be checked if it has the same price as the DB
+                    selectProductSubView.setSelectedProductList(checkProductPriceWithDB(selectedInvoice.getProductList()));
                     invoiceCommentTextArea.setVisible(true);
                     checkbApproved.setVisible(true);
                     checkbRejected.setVisible(true);
@@ -997,6 +1034,28 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
                 }
             }
         }
+    }
+
+    private List<Product> checkProductPriceWithDB(List<Product> productList) {
+        if((productList != null) && (productList.size() > 0)){
+            for(Product product : productList.stream().filter(x -> ((x.isNoRecentPriceApproved() == false))).collect(Collectors.toList())){
+                if(product.getId() != null){
+                    Optional<Product> dbProduct = productService.findById(product.getId());
+                    if(dbProduct.isPresent()){
+                        if((dbProduct.get().getPurchasePrice() > product.getPurchasePrice())){
+                            product.setNoRecentPrice(true);
+                            product.setRecentPurchasePrice(dbProduct.get().getPurchasePrice());
+                            product.setRecentAgroPrice(dbProduct.get().getSellPrice());
+                            product.setRecentIndustryPrice(dbProduct.get().getSellPriceIndustry());
+                        }
+                        else{
+                            product.setNoRecentPrice(false);
+                        }
+                    }
+                }
+            }
+        }
+        return productList;
     }
 
     @Override

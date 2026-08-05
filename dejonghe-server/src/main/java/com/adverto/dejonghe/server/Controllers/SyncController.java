@@ -51,8 +51,11 @@ public class SyncController {
     private final ProductLevel6Service productLevel6Service;
     private final ProductLevel7Service productLevel7Service;
 
-    @Value("${app.update.folder}")
-    private String updateFolder;
+    @Value("${app.update.folder.local}")
+    private String updateFolderLocal;
+
+    @Value("${app.update.folder.remote}")
+    private String updateFolderRemote;
 
     @GetMapping("/employees")
     public List<Employee> getEmployeesChangedSince(
@@ -187,13 +190,13 @@ public class SyncController {
 
     }
 
-    @GetMapping("/update-tablet")
-    public ResponseEntity<Resource> downloadTabletJar()
+    @GetMapping("/update-tablet-local")
+    public ResponseEntity<Resource> downloadTabletLocalJar()
             throws IOException {
 
         Path path = Paths.get(
-                updateFolder,
-                "tabletDemo-1.0-SNAPSHOT.jar"
+                updateFolderLocal,
+                "tabletIntern-1.0-SNAPSHOT.jar"
         );
 
         Resource resource =
@@ -205,7 +208,30 @@ public class SyncController {
                 )
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=tabletDemo-1.0-SNAPSHOT.jar"
+                        "attachment; filename=tabletIntern-1.0-SNAPSHOT.jar"
+                )
+                .body(resource);
+    }
+
+    @GetMapping("/update-tablet-remote")
+    public ResponseEntity<Resource> downloadTabletRemoteJar()
+            throws IOException {
+
+        Path path = Paths.get(
+                updateFolderRemote,
+                "tabletExtern-1.0-SNAPSHOT.jar"
+        );
+
+        Resource resource =
+                new UrlResource(path.toUri());
+
+        return ResponseEntity.ok()
+                .contentType(
+                        MediaType.APPLICATION_OCTET_STREAM
+                )
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=tabletExtern-1.0-SNAPSHOT.jar"
                 )
                 .body(resource);
     }

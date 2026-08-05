@@ -56,8 +56,8 @@ import static com.vaadin.flow.component.button.ButtonVariant.LUMO_TERTIARY_INLIN
 public class ImportArticleView extends Div implements BeforeEnterObserver {
 
     //@Value( "${linkSpreadsheetBulk}" )
-    //private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("/Users/bramvandenberghe/Desktop/dejonghe.xlsx");
-    private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("D:\\Algemeen\\Documentatie\\Dejonghe-techniek\\Database\\dejonghe.xlsx\\dejonghe.xlsx");
+    private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("/Users/bramvandenberghe/Desktop/dejonghe.xlsx");
+    //private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("D:\\Algemeen\\Documentatie\\Dejonghe-techniek\\Database\\dejonghe.xlsx\\dejonghe.xlsx");
 
     Notification deleteCustomerNotification;
 

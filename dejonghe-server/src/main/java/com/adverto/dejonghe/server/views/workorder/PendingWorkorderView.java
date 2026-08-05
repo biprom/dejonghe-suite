@@ -3,6 +3,7 @@ import com.adverto.dejonghe.server.customEvents.GetSelectedWorkOrderEvent;
 import com.vaadin.flow.component.ClickEvent;
 import com.vaadin.flow.component.ComponentEventListener;
 import com.vaadin.flow.component.contextmenu.MenuItem;
+import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.menubar.MenuBar;
 import com.vaadin.flow.component.menubar.MenuBarVariant;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
@@ -132,6 +133,13 @@ public class PendingWorkorderView extends VerticalLayout implements BeforeEnterO
         actionBarLayout.setAlignItems(FlexComponent.Alignment.CENTER);
         actionBarLayout.setPadding(true);
 
+        //add Back button
+        Button backButton = new Button(VaadinIcon.ARROW_LEFT.create());
+        backButton.addClassName("subNav-new");
+        backButton.addClickListener(e -> {
+            UI.getCurrent().getPage().getHistory().back();
+        });
+
         //add New Button
         Button newButton = new Button("+");
         newButton.addClassName("subNav-new");
@@ -152,7 +160,7 @@ public class PendingWorkorderView extends VerticalLayout implements BeforeEnterO
 //        actie.getSubMenu().addItem("Maak proforma per dag", getMakeProFormaInvoicePerDayClickEvent());
 //        actie.getSubMenu().addItem("Maak samengestelde proforma",getMakeProFormaInvoiceClickEvent());
         actie.getSubMenu().addItem("Verwijder",getRemoveOrderClickEvent());
-        actionBarLayout.add(newButton, actionBar);
+        actionBarLayout.add(backButton,newButton, actionBar);
         return actionBarLayout;
     }
 

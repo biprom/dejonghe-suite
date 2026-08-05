@@ -5,6 +5,7 @@ import com.adverto.dejonghe.common.dbservices.InvoiceService;
 import com.adverto.dejonghe.common.entities.customers.Address;
 import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.invoice.Invoice;
+import com.adverto.dejonghe.common.entities.invoice.Payment;
 import com.adverto.dejonghe.common.entities.product.product.Product;
 import com.adverto.dejonghe.server.views.invoice.FinalInvoiceView;
 import com.adverto.dejonghe.server.views.invoice.ProformaInvoiceView;
@@ -129,7 +130,16 @@ public class CustomerCard extends Card {
                         unpayedExpiredInvoices.stream().filter(x -> x.getBFinalInvoice() == true).collect(Collectors.toList()).size() +
                                 " vervallen factur(en) : (" +
                                 df.format(totalUnpayedExpired) +
-                                " € excl BTW)"
+                                " € excl BTW)." +
+                        " Waarvan betaald : " + unpayedExpiredInvoices.stream()
+                                .flatMap(invoice ->
+                                        Optional.ofNullable(invoice.getPaymentList())
+                                                .orElse(Collections.emptyList())
+                                                .stream())
+                                .map(Payment::getPaymentAmount)
+                                .filter(Objects::nonNull)
+                                .mapToDouble(Double::doubleValue)
+                                .sum() + " €"
                 );
 
                 link.setRoute(FinalInvoiceView.class);

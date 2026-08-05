@@ -8,6 +8,7 @@ import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.server.services.customer.CustomerViewState;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -32,6 +33,7 @@ public class CustomerDashboardView extends VerticalLayout implements BeforeEnter
     InvoiceService invoiceService;
     CustomerViewState customerViewState;
 
+    Button clearFilterButton;
     TextField searchField;
     Optional<List<Customer>> customers;
     VirtualList<List<Customer>> virtualList;
@@ -119,6 +121,9 @@ public class CustomerDashboardView extends VerticalLayout implements BeforeEnter
 
     private HorizontalLayout getSearchBar() {
         HorizontalLayout searchLayout = new HorizontalLayout();
+
+        clearFilterButton = new Button(VaadinIcon.CLOSE.create());
+
         searchLayout.setWidth("100%");
         searchField = new TextField();
         searchField.setWidth("100%");
@@ -141,7 +146,12 @@ public class CustomerDashboardView extends VerticalLayout implements BeforeEnter
                 Notification.show("Geen klanten gevonden");
             }
         });
-        searchLayout.add(searchField);
+
+        clearFilterButton.addClickListener(e -> {
+            searchField.setValue("");
+        });
+
+        searchLayout.add(clearFilterButton,searchField);
         return searchLayout;
     }
 

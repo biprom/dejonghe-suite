@@ -14,6 +14,10 @@ public class EmployeeService {
     @Autowired
     EmployeeRepo employeeRepo;
 
+    public Optional<Employee> findById(String id) {
+        return employeeRepo.findById(id);
+    }
+
     public Optional<List<Employee>> getEmployeeByFirstName(String firstName) {
         return Optional.of(employeeRepo.findByFirstNameContainingIgnoreCase(firstName));
     }

@@ -1,5 +1,7 @@
 package com.adverto.dejonghe.server.views.subViews;
 
+import com.adverto.dejonghe.common.entities.enums.workorder.WorkOrderStatus;
+import com.adverto.dejonghe.common.entities.product.product.Product;
 import com.adverto.dejonghe.server.customEvents.GetSelectedInvoiceEvent;
 import com.adverto.dejonghe.common.dbservices.CustomerService;
 import com.adverto.dejonghe.common.dbservices.DeviceService;
@@ -13,6 +15,8 @@ import com.adverto.dejonghe.server.services.invoice.InvoiceServices;
 import com.adverto.dejonghe.server.services.invoice.InvoiceViewState;
 import com.adverto.dejonghe.server.views.customers.CustomerView;
 import com.adverto.dejonghe.server.views.workorder.FinishedWorkorderView;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vaadin.flow.component.ClickEvent;
 import com.vaadin.flow.component.ComponentEventListener;
 import com.vaadin.flow.component.Text;
@@ -26,6 +30,7 @@ import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridSortOrder;
 import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.grid.HeaderRow;
+import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
@@ -40,6 +45,7 @@ import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.provider.ListDataProvider;
 import com.vaadin.flow.data.provider.Query;
 import com.vaadin.flow.router.*;
+import com.vaadin.flow.server.StreamResource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Scope;
@@ -49,10 +55,15 @@ import software.xdev.vaadin.daterange_picker.business.SimpleDateRange;
 import software.xdev.vaadin.daterange_picker.business.SimpleDateRanges;
 import software.xdev.vaadin.daterange_picker.ui.DateRangePicker;
 
+import java.io.IOException;
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.Period;
@@ -116,6 +127,7 @@ public class CurrentInvoiceSubView extends VerticalLayout {
     Button searchButton;
 
     Dialog paymentDialog;
+    Dialog checkZeroPricesDialog;
 
     Double totalOpenAmount;
     Double totalAmount;
@@ -149,6 +161,7 @@ public class CurrentInvoiceSubView extends VerticalLayout {
         createReportDelete();
         setUpDateRangeButton();
         setUpPaymentDialog();
+        setUpZeroPricesDialog();
         createDoubleProductNotification();
         this.add(setUpGrid());
         this.getStyle()
@@ -165,7 +178,9 @@ public class CurrentInvoiceSubView extends VerticalLayout {
         Button seperateButton = new Button("Zet werkbonnen terug en verwijder proforma",
                 clickEvent -> {
                     if((selectedProformaToSetBackWorkOrders != null) && (selectedProformaToSetBackWorkOrders.getWorkOrderList() != null) && (selectedProformaToSetBackWorkOrders.getWorkOrderList().size() > 0)) {
-                        selectedProformaToSetBackWorkOrders.getWorkOrderList().forEach(workOrder -> {workOrderService.save(workOrder);});
+                        selectedProformaToSetBackWorkOrders.getWorkOrderList().forEach(workOrder -> {
+                            workOrder.setWorkOrderStatus(WorkOrderStatus.FINISHED);
+                            workOrderService.save(workOrder);});
                         invoiceService.delete(selectedProformaToSetBackWorkOrders);
                         dataProvider.getItems().remove(selectedProformaToSetBackWorkOrders);
                         dataProvider.refreshAll();
@@ -189,6 +204,26 @@ public class CurrentInvoiceSubView extends VerticalLayout {
         warningReOpenWorkOrderNotification.add(layout);
 
         return warningReOpenWorkOrderNotification;
+    }
+
+    private void setUpZeroPricesDialog(){
+        checkZeroPricesDialog = new Dialog();
+        checkZeroPricesDialog.setHeaderTitle("Deze proforma heeft product(en) met 0 prijs!");
+        Button saveButton = createApproveButton(checkZeroPricesDialog);
+        Button cancelButton = new Button("Maak geen factuur", e -> checkZeroPricesDialog.close());
+        Div spacer = new Div();
+        spacer.getStyle().set("flex-grow", "1");
+        checkZeroPricesDialog.getFooter().add(cancelButton);
+        checkZeroPricesDialog.getFooter().add(spacer);
+        checkZeroPricesDialog.getFooter().add(saveButton);
+    }
+
+    private Button createApproveButton(Dialog checkZeroPricesDialog) {
+        Button saveButton = new Button("Maak toch factuur", e -> {
+            makeInvoiceForItem(selectedInvoice);
+            checkZeroPricesDialog.close();
+        });
+        return saveButton;
     }
 
     private void setUpPaymentDialog() {
@@ -792,17 +827,39 @@ public class CurrentInvoiceSubView extends VerticalLayout {
 
     private ComponentEventListener<ClickEvent<MenuItem>> makeInvoiceForProforma(Invoice item) {
         return  (event) -> {
-            item.setBFinalInvoice(true);
-            item.setFinalizeInvoice(true);
-            item.setInvoiceDate(LocalDate.now());
-            item.setExpiryDate(LocalDate.now().plusDays(14));
-            item.setUnpaid(true);
-            item.setFinalInvoiceNumber(invoiceServices.getNewFinalInvoiceNumber());
-            invoiceService.save(item);
-            dataProvider.getItems().remove(item);
-            dataProvider.refreshAll();
+            selectedInvoice = item;
+            if(checkIfThereAreZeroPrices(selectedInvoice)){
+                checkZeroPricesDialog.open();
+            }
+            else{
+                makeInvoiceForItem(selectedInvoice);
+            }
         };
     }
+
+    private void makeInvoiceForItem(Invoice item) {
+        item.setBFinalInvoice(true);
+        item.setFinalizeInvoice(true);
+        item.setInvoiceDate(LocalDate.now());
+        item.setExpiryDate(LocalDate.now().plusDays(14));
+        item.setUnpaid(true);
+        item.setFinalInvoiceNumber(invoiceServices.getNewFinalInvoiceNumber());
+        invoiceService.save(item);
+        dataProvider.getItems().remove(item);
+        dataProvider.refreshAll();
+    }
+
+    private boolean checkIfThereAreZeroPrices(Invoice item) {
+        if(item.getProductList() != null && item.getProductList().size() > 0){
+            for(Product product : item.getProductList()){
+                if((product.getBComment() == false)&&(product.getTotalPrice() == 0.0)){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
 
     private ComponentEventListener<ClickEvent<MenuItem>> sendProformaToCustomer(Invoice item) {
         return  (event) -> {
@@ -948,33 +1005,61 @@ public class CurrentInvoiceSubView extends VerticalLayout {
             selectedInvoice = item;
             addReminderNotification.open();
 
-            invoiceServices.generateInvoicePDF(item);
+            List<String> pdfPaths = invoiceServices.generateInvoicePDF(item);
 
-            String pdfUrl = "http://localhost:8080/pdf";
+            if(pdfPaths != null && pdfPaths.size() == 1){
+                            //only invoice PDF
+                            String pdfUrl = "http://localhost:8080/pdf";
 
-            getUI().ifPresent(ui ->
-                    ui.getPage().executeJs("""
-            const url = $0;
-
-            fetch(url)
-                .then(response => response.blob())
-                .then(blob => {
-                    const item = new ClipboardItem({
-                        'application/pdf': blob
-                    });
-                    return navigator.clipboard.write([item]);
-                })
-                .then(() => {
-                    console.log("PDF in klembord geplaatst");
-                })
-                .catch(err => {
-                    console.error("Fout bij kopiëren:", err);
-                });
+                            getUI().ifPresent(ui ->
+                                    ui.getPage().executeJs("""
+                    const url = $0;
+            
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'document.pdf'; // gewenste bestandsnaam
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
                 """, pdfUrl)
-            );
+                            );
+            } else if (pdfPaths != null && pdfPaths.size() > 1) {
+                //invoice
+                String pdfUrl = "http://192.168.1.90:8080/pdf";
+
+                getUI().ifPresent(ui ->
+                        ui.getPage().executeJs("""
+                    const url = $0;
+            
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'document.pdf'; // gewenste bestandsnaam
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                """, pdfUrl)
+                );
+
+                //attachement
+                String attachementUrl = "http://192.168.1.90:8080/attachement";
+
+                getUI().ifPresent(ui ->
+                        ui.getPage().executeJs("""
+                    const url = $0;
+            
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'document.pdf'; // gewenste bestandsnaam
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                """, attachementUrl)
+                );
+            }
+
 
             String ontvanger = "klant@email.be";
-            String subject = "Herinnering factuur : " + item.getInvoiceNumber();
+            String subject = "Herinnering factuur : " + item.getFinalInvoiceNumber();
             String body = """
                             Beste klant.
                             

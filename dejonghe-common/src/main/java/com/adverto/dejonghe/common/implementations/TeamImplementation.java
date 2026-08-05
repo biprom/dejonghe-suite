@@ -43,12 +43,6 @@ public class TeamImplementation implements JRDataSource {
             }
 
         }
-        else if (jrField.getName().equals("Comment")) {
-            if((teams.get(lastFiledAdded).getComment() != null) && ((teams.get(lastFiledAdded).getComment().length() > 0))){
-                return "  " + teams.get(lastFiledAdded).getComment();
-            }
-            return null;
-        }
         else if (jrField.getName().equals("Vihicle")) {
             if((teams.get(lastFiledAdded).getVihicle() != null) && ((teams.get(lastFiledAdded).getVihicle().length() > 0))){
                 return "  " + teams.get(lastFiledAdded).getVihicle();

@@ -28,7 +28,14 @@ import com.adverto.dejonghe.common.entities.product.product.Product;
 import com.adverto.dejonghe.common.implementations.ProductImplementation;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vaadin.flow.component.UI;
+import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
+import com.vaadin.flow.component.dialog.Dialog;
+import com.vaadin.flow.component.html.H1;
+import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.notification.NotificationVariant;
 import net.sf.jasperreports.engine.*;
 import net.sf.jasperreports.engine.export.JRPdfExporter;
 import net.sf.jasperreports.export.SimpleExporterInput;
@@ -98,6 +105,21 @@ public class InvoiceServices {
 
     String response;
 
+    ConfirmDialog noCustomerDialog;
+
+    public InvoiceServices() {
+        setUpNoCustomerDialog();
+    }
+
+    private void setUpNoCustomerDialog() {
+        noCustomerDialog = new ConfirmDialog();
+        noCustomerDialog.setCloseOnEsc(false);
+        noCustomerDialog.setWidth("50%");
+        noCustomerDialog.add(new H2("Deze werkbon bevat geen geldige klant!"));
+        noCustomerDialog.add(new H3("Gelieve de klant in de database in te geven en deze opnieuw in de werkbon te selecteren."));
+        noCustomerDialog.setConfirmText("OK");
+        noCustomerDialog.addConfirmListener(event -> noCustomerDialog.close());
+    }
 
     private static final Map<String, Pattern> VAT_PATTERNS = Map.of(
             "BE", Pattern.compile("^BE(\\d{4})(\\d{3})(\\d{3})$"),
@@ -253,76 +275,702 @@ public class InvoiceServices {
 
         Optional<List<Customer>> optCustomer = customerService.getCustomerByWorkAddress(workAddress);
         if(optCustomer.isEmpty()){
-            Customer customer = new Customer();
-            customer.setId(LocalDateTime.now().toString());
-            customer.setName(workAddress.getAddressName());
-            customer.setVatNumber("");
-            customer.setComment("");
-            customer.setAlertMessage("");
-            List<Address>addressList = new ArrayList<>();
-            Address address = new Address();
-            addressList.add(address);
-            customer.setAddresses(addressList);
-            optCustomer = Optional.of(List.of(customer));
+            // if there is no customer -> make Notification
+            noCustomerDialog.open();
+            return null;
         }
         else{
             if(optCustomer.get().size() >= 2){
                 Notification.show("Er zijn meerdere klanten met hetzelfde Werkadres");
             }
             invoice.setCustomer(optCustomer.get().get(0));
+        }
 
-            List<String> allFotoIds = workOrderSet.stream()
-                    .map(WorkOrder::getImageList)
-                    .filter(Objects::nonNull)
-                    .flatMap(List::stream)
-                    .collect(Collectors.toList());
-            invoice.setImageList(allFotoIds);
+        List<String> allFotoIds = workOrderSet.stream()
+                .map(WorkOrder::getImageList)
+                .filter(Objects::nonNull)
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
+        invoice.setImageList(allFotoIds);
 
-            invoice.setWorkOrderList(workOrderSet);
+        invoice.setWorkOrderList(workOrderSet);
 
-            List<Product> allProducts = new ArrayList<>();
+        List<Product> allProducts = new ArrayList<>();
 
-            //get comment of first WorkOrder and add it as comment
-            workOrderSet.forEach(workOrder -> {
-                try {
-                    String comment = workOrder.getWorkOrderHeaderList().getFirst().getDescription();
+        //get comment of first WorkOrder and add it as comment
+        workOrderSet.forEach(workOrder -> {
+            try {
 
-                    if (comment != null && !comment.isBlank()) {
+                String comment = workOrder.getWorkOrderHeaderList().stream()
+                        .map(WorkOrderHeader::getDescription)
+                        .filter(Objects::nonNull)
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .distinct()
+                        .collect(Collectors.joining(System.lineSeparator()));
 
-                        List<String> commentRowList = splitText(comment, 90);
+                if (comment != null && !comment.isBlank()) {
 
-                        for (String row : commentRowList) {
-                            Product newProduct = new Product();
-                            newProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                            newProduct.setInternalName(row);
-                            newProduct.setTeamNumber(0);
-                            newProduct.setBComment(true);
-                            allProducts.add(newProduct);
+                    List<String> commentRowList = splitText(comment, 90);
+
+                    for (String row : commentRowList) {
+                        Product newProduct = new Product();
+                        newProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
+                        newProduct.setInternalName(row);
+                        newProduct.setTeamNumber(0);
+                        newProduct.setBComment(true);
+                        allProducts.add(newProduct);
+                    }
+                }
+            } catch (Exception e) {
+                Notification.show("De starter bevat geen commentaar voor op de proforma!");
+            }
+        });
+
+        //retrieve selected Products
+        List<Product> selectedProducts = workOrderSet.stream()
+                .map(WorkOrder::getProductList)
+                .filter(Objects::nonNull)
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
+
+        //sort selected Products
+        Comparator<Product> productComparator = (o1, o2) -> compareOnderdeel(o1.getInternalName(), o2.getInternalName());
+        selectedProducts.sort(productComparator);
+
+        //add sorted Products to list
+        allProducts.addAll(selectedProducts.stream().filter(product->(product.getInternalName() != null) && (product.getInternalName().length() > 0)).collect(Collectors.toList()));
+
+        //place all options at the bottom of the list
+        allProducts.sort(Comparator.comparing(
+                p -> (p.getProductLevel1() != null)&&("Extra".equalsIgnoreCase(p.getProductLevel1().getName()))
+        ));
+
+
+        Double generalHoursOnTheMove = 0.0;
+        Double programHoursOnTheMove = 0.0;
+        Double centrifugeHoursOnTheMove = 0.0;
+
+        Double generalHoursLocal = 0.0;
+        Double programHoursLocal = 0.0;
+        Double centrifugeHoursLocal = 0.0;
+
+
+        //Calculate workhours
+        for(WorkOrder workOrder : workOrderSet){
+            int i = 0;
+            for(WorkOrderHeader workOrderHeader : workOrder.getWorkOrderHeaderList()){
+
+                int numberOfTechnicians = 0;
+
+                if((workOrder.getWorkOrderHeaderList() != null) && (workOrder.getWorkOrderHeaderList().size() > 0) && (workOrderHeader.getWorkOrderTimeList() != null)){
+                    if(i == 0){
+                        numberOfTechnicians = numberOfTechnicians + 1 + workOrder.getExtraEmployeesTeam1().size();
+                    }
+                    if(i == 1){
+                        numberOfTechnicians = numberOfTechnicians + 1 + workOrder.getExtraEmployeesTeam2().size();
+                    }
+                    if(i == 2){
+                        numberOfTechnicians = numberOfTechnicians + 1+ workOrder.getExtraEmployeesTeam3().size();
+                    }
+                    if(i == 3){
+                        numberOfTechnicians = numberOfTechnicians+ 1 + workOrder.getExtraEmployeesTeam4().size();
+                    }
+
+                    if((workOrder.getWorkLocation().equals(WorkLocation.ON_THE_MOVE)) && (workOrderHeader.getWorkType() == WorkType.GENERAL)){
+                        for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
+                            if(workOrderTime.getTimeUp() != null && workOrderTime.getTimeDown() != null){
+                                generalHoursOnTheMove = generalHoursOnTheMove + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeUp(), workOrderTime.getTimeDown()).toMinutes())-workOrderTime.getPauze())/60.0);
+                            }
                         }
                     }
-                } catch (Exception e) {
-                    Notification.show("De starter bevat geen commentaar voor op de proforma!");
+                    if((workOrder.getWorkLocation().equals(WorkLocation.ON_THE_MOVE) && (workOrderHeader.getWorkType()) == WorkType.CENTRIFUGE)){
+                        for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
+                            if(workOrderTime.getTimeUp() != null && workOrderTime.getTimeDown() != null) {
+                                centrifugeHoursOnTheMove = centrifugeHoursOnTheMove + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeUp(), workOrderTime.getTimeDown()).toMinutes()) - workOrderTime.getPauze()) / 60.0);
+                            }
+                        }
+                    }
+                    if((workOrder.getWorkLocation().equals(WorkLocation.ON_THE_MOVE) && (workOrderHeader.getWorkType()) == WorkType.PROGRAMMATIC)){
+                        for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
+                            if(workOrderTime.getTimeUp() != null && workOrderTime.getTimeDown() != null){
+                                programHoursOnTheMove = programHoursOnTheMove + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeUp(), workOrderTime.getTimeDown()).toMinutes())-workOrderTime.getPauze())/60.0);
+                            }
+                        }
+                    }
+                    if((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE)) && (workOrderHeader.getWorkType() == WorkType.GENERAL)){
+                        for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
+                            if(workOrderTime.getTimeStart() != null && workOrderTime.getTimeStop() != null){
+                                generalHoursLocal = generalHoursLocal + (numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze())/60.0));
+                            }
+                        }
+                    }
+                    if((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE) && (workOrderHeader.getWorkType()) == WorkType.CENTRIFUGE)){
+                        for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
+                            if(workOrderTime.getTimeStart() != null && workOrderTime.getTimeStop() != null){
+                                centrifugeHoursLocal = centrifugeHoursLocal + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze())/60.0);
+                            }
+                        }
+                    }
+                    if((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE) && (workOrderHeader.getWorkType()) == WorkType.PROGRAMMATIC)){
+                        for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
+                            if(workOrderTime.getTimeStart() != null && workOrderTime.getTimeStop() != null){
+                                programHoursLocal = programHoursLocal + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze())/60.0);
+                            }
+                        }
+                    }
+                    i++;
                 }
-            });
+            }
+        }
+
+
+        if(optCustomer.get().getFirst().getBIndustry() == true){
+
+            if(generalHoursLocal > 0){
+                Product workHourRegularLocalIndustrieProduct = productService.getWorkhourForRegularLocal().get();
+                workHourRegularLocalIndustrieProduct.setSelectedAmount(Double.valueOf(generalHoursLocal));
+                workHourRegularLocalIndustrieProduct.setTotalPrice(workHourRegularLocalIndustrieProduct.getSellPriceIndustry()*Double.valueOf(generalHoursLocal));
+                workHourRegularLocalIndustrieProduct.setBWorkHour(true);
+                workHourRegularLocalIndustrieProduct.setTeamNumber(0);
+                allProducts.add(workHourRegularLocalIndustrieProduct);
+            }
+
+            if(centrifugeHoursLocal > 0){
+                Product workHourCentrifugeLocalIndustrieProduct = productService.getWorkhourForCentrifugeLocal().get();
+                workHourCentrifugeLocalIndustrieProduct.setSelectedAmount(Double.valueOf(centrifugeHoursLocal));
+                workHourCentrifugeLocalIndustrieProduct.setTotalPrice(workHourCentrifugeLocalIndustrieProduct.getSellPriceIndustry()*Double.valueOf(centrifugeHoursLocal));
+                workHourCentrifugeLocalIndustrieProduct.setBWorkHour(true);
+                workHourCentrifugeLocalIndustrieProduct.setTeamNumber(0);
+                allProducts.add(workHourCentrifugeLocalIndustrieProduct);
+            }
+
+            if(programHoursLocal > 0){
+                Product workHourProgramLocalIndustrieProduct = productService.getWorkhourForProgammationLocal().get();
+                workHourProgramLocalIndustrieProduct.setSelectedAmount(Double.valueOf(programHoursLocal));
+                workHourProgramLocalIndustrieProduct.setTotalPrice(workHourProgramLocalIndustrieProduct.getSellPriceIndustry()*Double.valueOf(programHoursLocal));
+                workHourProgramLocalIndustrieProduct.setBWorkHour(true);
+                workHourProgramLocalIndustrieProduct.setTeamNumber(0);
+                allProducts.add(workHourProgramLocalIndustrieProduct);
+            }
+
+            if(generalHoursOnTheMove > 0){
+                Product workHourRegularOnTheMoveIndustrieProduct = productService.getWorkhourForRegularOnTheMove().get();
+                workHourRegularOnTheMoveIndustrieProduct.setSelectedAmount(Double.valueOf(generalHoursOnTheMove));
+                workHourRegularOnTheMoveIndustrieProduct.setTotalPrice(workHourRegularOnTheMoveIndustrieProduct.getSellPriceIndustry()*Double.valueOf(generalHoursOnTheMove));
+                workHourRegularOnTheMoveIndustrieProduct.setBWorkHour(true);
+                workHourRegularOnTheMoveIndustrieProduct.setTeamNumber(0);
+                allProducts.add(workHourRegularOnTheMoveIndustrieProduct);
+            }
+
+            if(centrifugeHoursOnTheMove > 0){
+                Product workHourCentrifugeOnTheMoveIndustrieProduct = productService.getWorkhourForCentrifugeOnTheMove().get();
+                workHourCentrifugeOnTheMoveIndustrieProduct.setSelectedAmount(Double.valueOf(centrifugeHoursOnTheMove));
+                workHourCentrifugeOnTheMoveIndustrieProduct.setTotalPrice(workHourCentrifugeOnTheMoveIndustrieProduct.getSellPriceIndustry()*Double.valueOf(centrifugeHoursOnTheMove));
+                workHourCentrifugeOnTheMoveIndustrieProduct.setBWorkHour(true);
+                workHourCentrifugeOnTheMoveIndustrieProduct.setTeamNumber(0);
+                allProducts.add(workHourCentrifugeOnTheMoveIndustrieProduct);
+            }
+
+            if(programHoursOnTheMove > 0){
+                Product workHourProgramOnTheMoveIndustrieProduct = productService.getWorkhourForProgammationOnTheMove().get();
+                workHourProgramOnTheMoveIndustrieProduct.setSelectedAmount(Double.valueOf(programHoursOnTheMove));
+                workHourProgramOnTheMoveIndustrieProduct.setTotalPrice(workHourProgramOnTheMoveIndustrieProduct.getSellPriceIndustry()*Double.valueOf(programHoursOnTheMove));
+                workHourProgramOnTheMoveIndustrieProduct.setBWorkHour(true);
+                workHourProgramOnTheMoveIndustrieProduct.setTeamNumber(0);
+                allProducts.add(workHourProgramOnTheMoveIndustrieProduct);
+            }
+
+        }
+
+        else{
+            if(generalHoursLocal > 0){
+                Product workHourRegularLocalAgroProduct = productService.getWorkhourForRegularLocal().get();
+                workHourRegularLocalAgroProduct.setSelectedAmount(Double.valueOf(generalHoursLocal));
+                workHourRegularLocalAgroProduct.setTotalPrice(workHourRegularLocalAgroProduct.getSellPrice()*Double.valueOf(generalHoursLocal));
+                workHourRegularLocalAgroProduct.setBWorkHour(true);
+                workHourRegularLocalAgroProduct.setTeamNumber(0);
+                allProducts.add(workHourRegularLocalAgroProduct);
+            }
+
+            if(centrifugeHoursLocal > 0){
+                Product workHourCentrifugeLocalAgroProduct = productService.getWorkhourForCentrifugeLocal().get();
+                workHourCentrifugeLocalAgroProduct.setSelectedAmount(Double.valueOf(centrifugeHoursLocal));
+                workHourCentrifugeLocalAgroProduct.setTotalPrice(workHourCentrifugeLocalAgroProduct.getSellPrice()*Double.valueOf(centrifugeHoursLocal));
+                workHourCentrifugeLocalAgroProduct.setBWorkHour(true);
+                workHourCentrifugeLocalAgroProduct.setTeamNumber(0);
+                allProducts.add(workHourCentrifugeLocalAgroProduct);
+            }
+
+            if(programHoursLocal > 0){
+                Product workHourProgramLocalAgroProduct = productService.getWorkhourForProgammationLocal().get();
+                workHourProgramLocalAgroProduct.setSelectedAmount(Double.valueOf(programHoursLocal));
+                workHourProgramLocalAgroProduct.setTotalPrice(workHourProgramLocalAgroProduct.getSellPrice()*Double.valueOf(programHoursLocal));
+                workHourProgramLocalAgroProduct.setBWorkHour(true);
+                workHourProgramLocalAgroProduct.setTeamNumber(0);
+                allProducts.add(workHourProgramLocalAgroProduct);
+            }
+            if(generalHoursOnTheMove > 0){
+                Product workHourRegularOnTheMoveAgroProduct = productService.getWorkhourForRegularOnTheMove().get();
+                workHourRegularOnTheMoveAgroProduct.setSelectedAmount(Double.valueOf(generalHoursOnTheMove));
+                workHourRegularOnTheMoveAgroProduct.setTotalPrice(workHourRegularOnTheMoveAgroProduct.getSellPrice()*Double.valueOf(generalHoursOnTheMove));
+                workHourRegularOnTheMoveAgroProduct.setBWorkHour(true);
+                workHourRegularOnTheMoveAgroProduct.setTeamNumber(0);
+                allProducts.add(workHourRegularOnTheMoveAgroProduct);
+            }
+
+            if(centrifugeHoursOnTheMove > 0){
+                Product workHourCentrifugeOnTheMoveAgroProduct = productService.getWorkhourForCentrifugeOnTheMove().get();
+                workHourCentrifugeOnTheMoveAgroProduct.setSelectedAmount(Double.valueOf(centrifugeHoursOnTheMove));
+                workHourCentrifugeOnTheMoveAgroProduct.setTotalPrice(workHourCentrifugeOnTheMoveAgroProduct.getSellPrice()*Double.valueOf(centrifugeHoursOnTheMove));
+                workHourCentrifugeOnTheMoveAgroProduct.setBWorkHour(true);
+                workHourCentrifugeOnTheMoveAgroProduct.setTeamNumber(0);
+                allProducts.add(workHourCentrifugeOnTheMoveAgroProduct);
+            }
+
+            if(programHoursOnTheMove > 0){
+                Product workHourProgramOnTheMoveAgroProduct = productService.getWorkhourForProgammationOnTheMove().get();
+                workHourProgramOnTheMoveAgroProduct.setSelectedAmount(Double.valueOf(programHoursOnTheMove));
+                workHourProgramOnTheMoveAgroProduct.setTotalPrice(workHourProgramOnTheMoveAgroProduct.getSellPrice()*Double.valueOf(programHoursOnTheMove));
+                workHourProgramOnTheMoveAgroProduct.setBWorkHour(true);
+                workHourProgramOnTheMoveAgroProduct.setTeamNumber(0);
+                allProducts.add(workHourProgramOnTheMoveAgroProduct);
+            }
+        }
+
+        // add movement to Proforma
+        Double amountKmRegular = 0.0;
+        Integer amountRidesRegular = 0;
+        Double amountKmTrailer = 0.0;
+        Integer amountRidesTrailer = 0;
+        Double amountKmCrane = 0.0;
+        Integer amountRidesCrane = 0;
+        Double amountHoursCraneRegular = 0.0;
+        Double amountHoursCraneIntens = 0.0;
+        Integer amountForfait = 0;
+
+        for(WorkOrder workOrder : workOrderSet) {
+            for (WorkOrderHeader workOrderHeader : workOrder.getWorkOrderHeaderList()) {
+                if((workAddress.getDistance() != null) && (((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.VAN))) ||
+                        ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.ATEGO))))){
+                    amountKmRegular = amountKmRegular + (workAddress.getDistance());
+                    amountRidesRegular = amountRidesRegular + 1;
+                }
+                if((workAddress.getDistance() != null) && (workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_TRAILER))){
+                    amountKmTrailer = amountKmTrailer + (workAddress.getDistance());
+                    amountRidesTrailer = amountRidesTrailer + 1;
+                }
+                if((workAddress.getDistance() != null) && (workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_CRANE))){
+                    amountKmCrane = amountKmCrane + (workAddress.getDistance());
+                    amountRidesCrane = amountRidesCrane + 1;
+                    if(workOrderHeader.getFleetWorkType().equals(FleetWorkType.DELIVERY)){
+                        amountForfait = ++amountForfait;
+                    }
+                }
+                if((workOrderHeader.getFleetHours() != null) && (workOrderHeader.getFleetHours() >= 0.0)){
+                    if(workOrderHeader.getFleetWorkType().equals(FleetWorkType.REGULAR)){
+                        amountHoursCraneRegular = amountHoursCraneRegular + workOrderHeader.getFleetHours();
+                    }
+                    if(workOrderHeader.getFleetWorkType().equals(FleetWorkType.INTENS)){
+                        amountHoursCraneIntens = amountHoursCraneIntens + workOrderHeader.getFleetHours();
+                    }
+                }
+            }
+        }
+
+        if(optCustomer.get().getFirst().getBIndustry() == true){
+            if(amountKmRegular > 0.0){
+                Product regularKm = productService.getRegularKm().get();
+                regularKm.setSelectedAmount(amountKmRegular);
+                regularKm.setTotalPrice(amountKmRegular*regularKm.getSellPriceIndustry());
+                regularKm.setBTravel(true);
+                regularKm.setTeamNumber(0);
+                if(amountRidesRegular > 1) {
+                    regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
+                }
+                allProducts.add(regularKm);
+            }
+            if(amountKmTrailer > 0.0){
+                Product forfaitTtrailer = productService.getWorkHoursTrailerForfait().get();
+                forfaitTtrailer.setSelectedAmount(1.0);
+                forfaitTtrailer.setTotalPrice(forfaitTtrailer.getSellPriceIndustry());
+                forfaitTtrailer.setBTravel(true);
+                forfaitTtrailer.setTeamNumber(0);
+                allProducts.add(forfaitTtrailer);
+
+                Product trailerKm = productService.getRegularTrailer().get();
+                trailerKm.setSelectedAmount(amountKmTrailer);
+                trailerKm.setTotalPrice(amountKmTrailer*trailerKm.getSellPriceIndustry());
+                trailerKm.setBTravel(true);
+                trailerKm.setTeamNumber(0);
+                if(amountRidesRegular > 1) {
+                    trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
+                }
+                allProducts.add(trailerKm);
+            }
+            if(amountKmCrane > 0.0){
+                Product craneKm = productService.getRegularCrane().get();
+                craneKm.setSelectedAmount(amountKmCrane);
+                craneKm.setTotalPrice(amountKmCrane*craneKm.getSellPriceIndustry());
+                craneKm.setBTravel(true);
+                craneKm.setTeamNumber(0);
+                if(amountRidesRegular > 1) {
+                    craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
+                }
+                allProducts.add(craneKm);
+            }
+            if((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular >= 3.0)){
+                Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
+                hoursCraneRegularIndustry.setSelectedAmount(amountHoursCraneRegular);
+                hoursCraneRegularIndustry.setTotalPrice(amountHoursCraneRegular*hoursCraneRegularIndustry.getSellPriceIndustry());
+                hoursCraneRegularIndustry.setBTravel(true);
+                hoursCraneRegularIndustry.setTeamNumber(0);
+                allProducts.add(hoursCraneRegularIndustry);
+            }
+            else if((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular < 3.0)){
+                Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
+                hoursCraneRegularIndustry.setSelectedAmount(3.0);
+                hoursCraneRegularIndustry.setTotalPrice(3.0*hoursCraneRegularIndustry.getSellPriceIndustry());
+                hoursCraneRegularIndustry.setBTravel(true);
+                hoursCraneRegularIndustry.setTeamNumber(0);
+                allProducts.add(hoursCraneRegularIndustry);
+            }
+            else if((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens >= 4.0)){
+                Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
+                hoursCraneIntenseIndustry.setSelectedAmount(amountHoursCraneIntens);
+                hoursCraneIntenseIndustry.setTotalPrice(amountHoursCraneIntens*hoursCraneIntenseIndustry.getSellPriceIndustry());
+                hoursCraneIntenseIndustry.setBTravel(true);
+                hoursCraneIntenseIndustry.setTeamNumber(0);
+                allProducts.add(hoursCraneIntenseIndustry);
+            }
+            else if((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens < 4.0)){
+                Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
+                hoursCraneIntenseIndustry.setSelectedAmount(4.0);
+                hoursCraneIntenseIndustry.setTotalPrice(4.0*hoursCraneIntenseIndustry.getSellPriceIndustry());
+                hoursCraneIntenseIndustry.setBTravel(true);
+                hoursCraneIntenseIndustry.setTeamNumber(0);
+                allProducts.add(hoursCraneIntenseIndustry);
+            }
+            if(amountForfait > 0){
+                Product hoursCraneForfaitIndustry = productService.getWorkHoursCraneForfait().get();
+                hoursCraneForfaitIndustry.setSelectedAmount(Double.valueOf(amountForfait));
+                hoursCraneForfaitIndustry.setTotalPrice(amountForfait*hoursCraneForfaitIndustry.getSellPriceIndustry());
+                hoursCraneForfaitIndustry.setBTravel(true);
+                hoursCraneForfaitIndustry.setTeamNumber(0);
+                allProducts.add(hoursCraneForfaitIndustry);
+            }
+        }
+        else{
+            if(amountKmRegular > 0.0){
+                Product regularKm = productService.getRegularKm().get();
+                regularKm.setSelectedAmount(amountKmRegular);
+                regularKm.setTotalPrice(amountKmRegular*regularKm.getSellPrice());
+                regularKm.setBTravel(true);
+                regularKm.setTeamNumber(0);
+                if(amountRidesRegular > 1) {
+                    regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
+                }
+                allProducts.add(regularKm);
+            }
+            if(amountKmTrailer > 0.0){
+
+                Product forfaitTrailer = productService.getWorkHoursTrailerForfait().get();
+                forfaitTrailer.setSelectedAmount(1.0);
+                forfaitTrailer.setTotalPrice(forfaitTrailer.getSellPrice());
+                forfaitTrailer.setBTravel(true);
+                forfaitTrailer.setTeamNumber(0);
+                allProducts.add(forfaitTrailer);
+
+                Product trailerKm = productService.getRegularTrailer().get();
+                trailerKm.setSelectedAmount(amountKmTrailer);
+                trailerKm.setTotalPrice(amountKmTrailer*trailerKm.getSellPrice());
+                trailerKm.setBTravel(true);
+                trailerKm.setTeamNumber(0);
+                if(amountRidesRegular > 1) {
+                    trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
+                }
+                allProducts.add(trailerKm);
+            }
+            if(amountKmCrane > 0.0){
+                Product craneKm = productService.getRegularCrane().get();
+                craneKm.setSelectedAmount(amountKmCrane);
+                craneKm.setTotalPrice(amountKmCrane*craneKm.getSellPrice());
+                craneKm.setBTravel(true);
+                craneKm.setTeamNumber(0);
+                if(amountRidesRegular > 1) {
+                    craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
+                }
+                allProducts.add(craneKm);
+            }
+            if((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular >= 3.0)){
+                Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
+                hoursCraneRegularIndustry.setSelectedAmount(amountHoursCraneRegular);
+                hoursCraneRegularIndustry.setTotalPrice(amountHoursCraneRegular*hoursCraneRegularIndustry.getSellPrice());
+                hoursCraneRegularIndustry.setBTravel(true);
+                hoursCraneRegularIndustry.setTeamNumber(0);
+                allProducts.add(hoursCraneRegularIndustry);
+            }
+            else if((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular < 3.0)){
+                Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
+                hoursCraneRegularIndustry.setSelectedAmount(3.0);
+                hoursCraneRegularIndustry.setTotalPrice(3.0*hoursCraneRegularIndustry.getSellPrice());
+                hoursCraneRegularIndustry.setBTravel(true);
+                hoursCraneRegularIndustry.setTeamNumber(0);
+                allProducts.add(hoursCraneRegularIndustry);
+            }
+            else if((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens >= 4.0)){
+                Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
+                hoursCraneIntenseIndustry.setSelectedAmount(amountHoursCraneIntens);
+                hoursCraneIntenseIndustry.setTotalPrice(amountHoursCraneIntens*hoursCraneIntenseIndustry.getSellPrice());
+                hoursCraneIntenseIndustry.setBTravel(true);
+                hoursCraneIntenseIndustry.setTeamNumber(0);
+                allProducts.add(hoursCraneIntenseIndustry);
+            }
+            else if((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens < 4.0)){
+                Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
+                hoursCraneIntenseIndustry.setSelectedAmount(4.0);
+                hoursCraneIntenseIndustry.setTotalPrice(4.0*hoursCraneIntenseIndustry.getSellPrice());
+                hoursCraneIntenseIndustry.setBTravel(true);
+                hoursCraneIntenseIndustry.setTeamNumber(0);
+                allProducts.add(hoursCraneIntenseIndustry);
+            }
+            if(amountForfait > 0){
+                Product hoursCraneForfaitIndustry = productService.getWorkHoursCraneForfait().get();
+                hoursCraneForfaitIndustry.setSelectedAmount(Double.valueOf(amountForfait));
+                hoursCraneForfaitIndustry.setTotalPrice(amountForfait*hoursCraneForfaitIndustry.getSellPrice());
+                hoursCraneForfaitIndustry.setBTravel(true);
+                hoursCraneForfaitIndustry.setTeamNumber(0);
+                allProducts.add(hoursCraneForfaitIndustry);
+            }
+        }
+
+        //add roadTax / Tunneltax to workorder
+
+        Double totalTax = 0.0;
+        Double totalTunnelTax = 0.0;
+        for(WorkOrder workOrder : workOrderSet){
+            for(WorkOrderHeader workOrderHeader : workOrder.getWorkOrderHeaderList()){
+                Double roadTax = 0.0;
+                Double tunnelTax = 0.0;
+                if((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.VAN))){
+                    if(workOrderHeader.getRoadTax() != null){
+                        roadTax = workOrderHeader.getRoadTax();
+                    }
+                    else{
+                        roadTax = 0.0;
+                    }
+                    if(workOrderHeader.getTunnelTax() != null){
+                        tunnelTax = workOrderHeader.getTunnelTax();
+                    }
+                    else{
+                        tunnelTax = 0.0;
+                    }
+                }
+                if((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.ATEGO))){
+
+                    if(workOrderHeader.getRoadTax() != null){
+                        if((workAddress.getRoadTaxAtego() != null) && (workAddress.getRoadTaxAtego() > workOrderHeader.getRoadTax())){
+                            roadTax = workAddress.getRoadTaxAtego();
+                        }
+                        else{
+                            roadTax = workOrderHeader.getRoadTax();
+                        }
+                    }
+                    else{
+                        roadTax = workAddress.getRoadTaxAtego();
+                    }
+                    if(workOrderHeader.getTunnelTax() != null){
+                        tunnelTax = workOrderHeader.getTunnelTax();
+                    }
+                    else{
+                        tunnelTax = 0.0;
+                    }
+                }
+                if((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_TRAILER))){
+                    if(workOrderHeader.getRoadTax() != null){
+                        if((workAddress.getRoadTaxActros() != null) && (workAddress.getRoadTaxActros() > workOrderHeader.getRoadTax())){
+                            roadTax = workAddress.getRoadTaxActros();
+                        }
+                        else{
+                            roadTax = workOrderHeader.getRoadTax();
+                        }
+                    }
+                    else{
+                        roadTax = workAddress.getRoadTaxActros();
+                    }
+                    if(workOrderHeader.getTunnelTax() != null){
+                        tunnelTax = workOrderHeader.getTunnelTax();
+                    }
+                    else{
+                        tunnelTax = 0.0;
+                    }
+                }
+                if((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_CRANE))){
+                    if(workOrderHeader.getRoadTax() != null){
+                        if((workAddress.getRoadTaxArocs() != null) && (workAddress.getRoadTaxArocs() > workOrderHeader.getRoadTax())){
+                            roadTax = workAddress.getRoadTaxArocs();
+                        }
+                        else{
+                            roadTax = workOrderHeader.getRoadTax();
+                        }
+                    }
+                    else{
+                        roadTax = workAddress.getRoadTaxArocs();
+                    }
+                    if(workOrderHeader.getTunnelTax() != null){
+                        tunnelTax = workOrderHeader.getTunnelTax();
+                    }
+                    else{
+                        tunnelTax = 0.0;
+                    }
+                }
+                if(roadTax != null){
+                    totalTax += roadTax;
+                }
+                if(tunnelTax != null){
+                    totalTunnelTax += tunnelTax;
+                }
+            }
+        }
+
+        if(totalTax > 0.0){
+            Product roadTaxProduct = new Product();
+            roadTaxProduct.setSelectedAmount(1.0);
+            roadTaxProduct.setInternalName("Wegentaks");
+            roadTaxProduct.setSellPrice(totalTax);
+            roadTaxProduct.setTotalPrice(1.0 * totalTax);
+            roadTaxProduct.setBTravel(true);
+            roadTaxProduct.setVat(VAT.EENENTWINTIG);
+            roadTaxProduct.setTeamNumber(0);
+            allProducts.add(roadTaxProduct);
+        }
+
+        if (totalTunnelTax > 0.0){
+            Product tunnelTaxProduct = new Product();
+            tunnelTaxProduct.setSelectedAmount(1.0);
+            tunnelTaxProduct.setInternalName("tunneltaks");
+            tunnelTaxProduct.setSellPrice(totalTunnelTax);
+            tunnelTaxProduct.setTotalPrice(1.0 * totalTunnelTax);
+            tunnelTaxProduct.setBTravel(true);
+            tunnelTaxProduct.setVat(VAT.EENENTWINTIG);
+            tunnelTaxProduct.setTeamNumber(0);
+            allProducts.add(tunnelTaxProduct);
+        }
+
+        //All products has to have the same date as the starter.
+        //this because it is a merged invoice with possibly one attachement
+        LocalDateTime starterDateTime = workOrderSet.stream().filter(workorder -> workorder.getStarter() == true).findFirst().get().getWorkDateTime();
+        allProducts.stream().forEach(product -> product.setDate(starterDateTime.toLocalDate()));
+
+        invoice.setProductList(allProducts);
+        checkIfToolsHoursAreSubtractedFromWorkOrder(invoice);
+
+        return invoice;
+    }
+
+    public Invoice getnerateInvoicePerDay(Set<WorkOrder> workOrderSet) {
+
+        List<WorkOrder> sortedWorkOrderList = new ArrayList<>(workOrderSet);
+        sortedWorkOrderList.sort(Comparator.comparing(WorkOrder::getWorkDateTime));
+
+        Invoice invoice = new Invoice();
+        invoice.setInvoiceNumber(getNewProFormaInvoiceNumber());
+        invoice.setInvoiceDate(LocalDate.now());
+        invoice.setExpiryDate(LocalDate.now().plusDays(14));
+        invoice.setBFinalInvoice(false);
+
+        Address workAddress = sortedWorkOrderList.stream().findFirst().get().getWorkAddress();
+        invoice.setWorkAddress(workAddress);
+        Optional<List<Customer>> optCustomer = customerService.getCustomerByWorkAddress(workAddress);
+        if(optCustomer.isEmpty()){
+            // if there is no customer -> make Notification
+            noCustomerDialog.open();
+            return null;
+        }
+        else{
+            if(optCustomer.get().size() >= 2){
+                Notification.show("Er zijn meerdere klanten met hetzelfde Werkadres");
+            }
+            invoice.setCustomer(optCustomer.get().get(0));
+        }
+
+
+        if (optCustomer.get().size() >= 2) {
+            Notification.show("Er zijn meerdere klanten met hetzelfde Werkadres");
+        }
+        invoice.setCustomer(optCustomer.get().get(0));
+
+        List<String> allFotoIds = sortedWorkOrderList.stream()
+                .map(WorkOrder::getImageList)
+                .filter(Objects::nonNull)
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
+        invoice.setImageList(allFotoIds);
+
+        invoice.setWorkOrderList(new LinkedHashSet<>(sortedWorkOrderList));
+
+        List<Product> allProducts = new ArrayList<>();
+
+        for (WorkOrder workOrder : sortedWorkOrderList) {
+
+            //generate empty line
+//                Product emptyLine = new Product();
+//                emptyLine.setDate(workOrder.getWorkDateTime().toLocalDate());
+//                emptyLine.setTeamNumber(0);
+//                emptyLine.setBComment(true);
+//                allProducts.add(emptyLine);
+
+            //generate Comments/Products per day
+            //place comment first
+
+
+            try {
+
+                String comment = workOrder.getWorkOrderHeaderList().stream()
+                        .map(WorkOrderHeader::getDescription)
+                        .filter(Objects::nonNull)
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .distinct()
+                        .collect(Collectors.joining(System.lineSeparator()));
+
+                if (comment != null && !comment.isBlank()) {
+
+                    List<String> commentRowList = splitText(comment, 90);
+
+                    for (String row : commentRowList) {
+                        Product newProduct = new Product();
+                        newProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
+                        newProduct.setInternalName(row);
+                        newProduct.setTeamNumber(0);
+                        newProduct.setBComment(true);
+                        allProducts.add(newProduct);
+                    }
+                }
+            } catch (Exception e) {
+                Notification.show("De starter bevat geen commentaar voor op de proforma!");
+            }
 
             //retrieve selected Products
-            List<Product> selectedProducts = workOrderSet.stream()
-                    .map(WorkOrder::getProductList)
+            List<Product> selectedProducts = workOrder.getProductList().stream()
                     .filter(Objects::nonNull)
-                    .flatMap(List::stream)
+                    .filter((product -> (product.getInternalName() != null) && (product.getInternalName().length() > 0)))
                     .collect(Collectors.toList());
+
+            //add date of looped Workorder to the Products so we can generate right attachements!
+            selectedProducts.stream().forEach(product -> product.setDate(workOrder.getWorkDateTime().toLocalDate()));
 
             //sort selected Products
             Comparator<Product> productComparator = (o1, o2) -> compareOnderdeel(o1.getInternalName(), o2.getInternalName());
             selectedProducts.sort(productComparator);
 
-            //add sorted Products to list
-            allProducts.addAll(selectedProducts.stream().filter(product->(product.getInternalName() != null) && (product.getInternalName().length() > 0)).collect(Collectors.toList()));
-
             //place all options at the bottom of the list
-            allProducts.sort(Comparator.comparing(
-                    p -> (p.getProductLevel1() != null)&&("Extra".equalsIgnoreCase(p.getProductLevel1().getName()))
+            selectedProducts.sort(Comparator.comparing(
+                    p -> (p.getProductLevel1() != null) && ("Extra".equalsIgnoreCase(p.getProductLevel1().getName()))
             ));
+
+            //add sorted Products to list
+            allProducts.addAll(selectedProducts);
 
 
             Double generalHoursOnTheMove = 0.0;
@@ -333,171 +981,187 @@ public class InvoiceServices {
             Double programHoursLocal = 0.0;
             Double centrifugeHoursLocal = 0.0;
 
+            int i = 0;
+            for (WorkOrderHeader workOrderHeader : workOrder.getWorkOrderHeaderList()) {
 
-            //Calculate workhours
-            for(WorkOrder workOrder : workOrderSet){
-                int i = 0;
-                for(WorkOrderHeader workOrderHeader : workOrder.getWorkOrderHeaderList()){
+                int numberOfTechnicians = 0;
 
-                    int numberOfTechnicians = 0;
-
-                    if((workOrder.getWorkOrderHeaderList() != null) && (workOrder.getWorkOrderHeaderList().size() > 0) && (workOrderHeader.getWorkOrderTimeList() != null)){
-                        if(i == 0){
-                            numberOfTechnicians = numberOfTechnicians + 1 + workOrder.getExtraEmployeesTeam1().size();
-                        }
-                        if(i == 1){
-                            numberOfTechnicians = numberOfTechnicians + 1 + workOrder.getExtraEmployeesTeam2().size();
-                        }
-                        if(i == 2){
-                            numberOfTechnicians = numberOfTechnicians + 1+ workOrder.getExtraEmployeesTeam3().size();
-                        }
-                        if(i == 3){
-                            numberOfTechnicians = numberOfTechnicians+ 1 + workOrder.getExtraEmployeesTeam4().size();
-                        }
-
-                        if((workOrder.getWorkLocation().equals(WorkLocation.ON_THE_MOVE)) && (workOrderHeader.getWorkType() == WorkType.GENERAL)){
-                            for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
-                                generalHoursOnTheMove = generalHoursOnTheMove + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeUp(), workOrderTime.getTimeDown()).toMinutes())-workOrderTime.getPauze())/60.0);
-                            }
-                        }
-                        if((workOrder.getWorkLocation().equals(WorkLocation.ON_THE_MOVE) && (workOrderHeader.getWorkType()) == WorkType.CENTRIFUGE)){
-                            for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
-                                centrifugeHoursOnTheMove = centrifugeHoursOnTheMove + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeUp(), workOrderTime.getTimeDown()).toMinutes())-workOrderTime.getPauze())/60.0);
-                            }
-                        }
-                        if((workOrder.getWorkLocation().equals(WorkLocation.ON_THE_MOVE) && (workOrderHeader.getWorkType()) == WorkType.PROGRAMMATIC)){
-                            for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
-                                programHoursOnTheMove = programHoursOnTheMove + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeUp(), workOrderTime.getTimeDown()).toMinutes())-workOrderTime.getPauze())/60.0);
-                            }
-                        }
-                        if((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE)) && (workOrderHeader.getWorkType() == WorkType.GENERAL)){
-                            for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
-                                generalHoursLocal = generalHoursLocal + (numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze())/60.0));
-                            }
-                        }
-                        if((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE) && (workOrderHeader.getWorkType()) == WorkType.CENTRIFUGE)){
-                            for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
-                                centrifugeHoursLocal = centrifugeHoursLocal + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze())/60.0);
-                            }
-                        }
-                        if((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE) && (workOrderHeader.getWorkType()) == WorkType.PROGRAMMATIC)){
-                            for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
-                                programHoursLocal = programHoursLocal + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze())/60.0);
-                            }
-                        }
-                        i++;
+                if ((workOrder.getWorkOrderHeaderList() != null) && (workOrder.getWorkOrderHeaderList().size() > 0) && (workOrderHeader.getWorkOrderTimeList() != null)) {
+                    if (i == 0) {
+                        numberOfTechnicians = numberOfTechnicians + 1 + workOrder.getExtraEmployeesTeam1().size();
                     }
+                    if (i == 1) {
+                        numberOfTechnicians = numberOfTechnicians + 1 + workOrder.getExtraEmployeesTeam2().size();
+                    }
+                    if (i == 2) {
+                        numberOfTechnicians = numberOfTechnicians + 1 + workOrder.getExtraEmployeesTeam3().size();
+                    }
+                    if (i == 3) {
+                        numberOfTechnicians = numberOfTechnicians + 1 + workOrder.getExtraEmployeesTeam4().size();
+                    }
+                    if ((workOrder.getWorkLocation().equals(WorkLocation.ON_THE_MOVE)) && (workOrderHeader.getWorkType() == WorkType.GENERAL)) {
+                        for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
+                            if((workOrderTime.getTimeUp() != null) && (workOrderTime.getTimeDown() != null)){
+                                generalHoursOnTheMove = generalHoursOnTheMove + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeUp(), workOrderTime.getTimeDown()).toMinutes())-workOrderTime.getPauze()) / 60.0);
+                            }
+                        }
+                    }
+                    if ((workOrder.getWorkLocation().equals(WorkLocation.ON_THE_MOVE) && (workOrderHeader.getWorkType()) == WorkType.CENTRIFUGE)) {
+                        for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
+                            if((workOrderTime.getTimeUp() != null) && (workOrderTime.getTimeDown() != null)) {
+                                centrifugeHoursOnTheMove = centrifugeHoursOnTheMove + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeUp(), workOrderTime.getTimeDown()).toMinutes()) - workOrderTime.getPauze()) / 60.0);
+                            }
+                        }
+                    }
+                    if ((workOrder.getWorkLocation().equals(WorkLocation.ON_THE_MOVE) && (workOrderHeader.getWorkType()) == WorkType.PROGRAMMATIC)) {
+                        for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
+                            if((workOrderTime.getTimeUp() != null) && (workOrderTime.getTimeDown() != null)){
+                                programHoursOnTheMove = programHoursOnTheMove + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeUp(), workOrderTime.getTimeDown()).toMinutes())-workOrderTime.getPauze()) / 60.0);
+                            }
+                        }
+                    }
+                    if ((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE)) && (workOrderHeader.getWorkType() == WorkType.GENERAL)) {
+                        for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
+                            if((workOrderTime.getTimeStart() != null) && (workOrderTime.getTimeStop() != null)){
+                                generalHoursLocal = generalHoursLocal + (numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze()) / 60.0));
+                            }
+                        }
+                    }
+                    if ((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE) && (workOrderHeader.getWorkType()) == WorkType.CENTRIFUGE)) {
+                        for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
+                            if((workOrderTime.getTimeStart() != null) && (workOrderTime.getTimeStop() != null)){
+                                centrifugeHoursLocal = centrifugeHoursLocal + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze()) / 60.0);
+                            }
+                        }
+                    }
+                    if ((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE) && (workOrderHeader.getWorkType()) == WorkType.PROGRAMMATIC)) {
+                        for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
+                            if((workOrderTime.getTimeStart() != null) && (workOrderTime.getTimeStop() != null)){
+                                programHoursLocal = programHoursLocal + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze()) / 60.0);
+                            }
+                        }
+                    }
+                    i++;
                 }
             }
 
+            if (optCustomer.get().getFirst().getBIndustry() == true) {
 
-            if(optCustomer.get().getFirst().getBIndustry() == true){
-
-                if(generalHoursLocal > 0){
+                if (generalHoursLocal > 0) {
                     Product workHourRegularLocalIndustrieProduct = productService.getWorkhourForRegularLocal().get();
                     workHourRegularLocalIndustrieProduct.setSelectedAmount(Double.valueOf(generalHoursLocal));
-                    workHourRegularLocalIndustrieProduct.setTotalPrice(workHourRegularLocalIndustrieProduct.getSellPriceIndustry()*Double.valueOf(generalHoursLocal));
+                    workHourRegularLocalIndustrieProduct.setTotalPrice(Double.valueOf(generalHoursLocal) * workHourRegularLocalIndustrieProduct.getSellPriceIndustry());
+                    workHourRegularLocalIndustrieProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                     workHourRegularLocalIndustrieProduct.setBWorkHour(true);
                     workHourRegularLocalIndustrieProduct.setTeamNumber(0);
                     allProducts.add(workHourRegularLocalIndustrieProduct);
                 }
 
-                if(centrifugeHoursLocal > 0){
+                if (centrifugeHoursLocal > 0) {
                     Product workHourCentrifugeLocalIndustrieProduct = productService.getWorkhourForCentrifugeLocal().get();
                     workHourCentrifugeLocalIndustrieProduct.setSelectedAmount(Double.valueOf(centrifugeHoursLocal));
-                    workHourCentrifugeLocalIndustrieProduct.setTotalPrice(workHourCentrifugeLocalIndustrieProduct.getSellPriceIndustry()*Double.valueOf(centrifugeHoursLocal));
+                    workHourCentrifugeLocalIndustrieProduct.setTotalPrice(Double.valueOf(centrifugeHoursLocal) * workHourCentrifugeLocalIndustrieProduct.getSellPriceIndustry());
+                    workHourCentrifugeLocalIndustrieProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                     workHourCentrifugeLocalIndustrieProduct.setBWorkHour(true);
                     workHourCentrifugeLocalIndustrieProduct.setTeamNumber(0);
                     allProducts.add(workHourCentrifugeLocalIndustrieProduct);
                 }
 
-                if(programHoursLocal > 0){
+                if (programHoursLocal > 0) {
                     Product workHourProgramLocalIndustrieProduct = productService.getWorkhourForProgammationLocal().get();
                     workHourProgramLocalIndustrieProduct.setSelectedAmount(Double.valueOf(programHoursLocal));
-                    workHourProgramLocalIndustrieProduct.setTotalPrice(workHourProgramLocalIndustrieProduct.getSellPriceIndustry()*Double.valueOf(programHoursLocal));
+                    workHourProgramLocalIndustrieProduct.setTotalPrice(Double.valueOf(programHoursLocal) * workHourProgramLocalIndustrieProduct.getSellPriceIndustry());
+                    workHourProgramLocalIndustrieProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                     workHourProgramLocalIndustrieProduct.setBWorkHour(true);
                     workHourProgramLocalIndustrieProduct.setTeamNumber(0);
                     allProducts.add(workHourProgramLocalIndustrieProduct);
                 }
 
-                if(generalHoursOnTheMove > 0){
+                if (generalHoursOnTheMove > 0) {
                     Product workHourRegularOnTheMoveIndustrieProduct = productService.getWorkhourForRegularOnTheMove().get();
                     workHourRegularOnTheMoveIndustrieProduct.setSelectedAmount(Double.valueOf(generalHoursOnTheMove));
-                    workHourRegularOnTheMoveIndustrieProduct.setTotalPrice(workHourRegularOnTheMoveIndustrieProduct.getSellPriceIndustry()*Double.valueOf(generalHoursOnTheMove));
+                    workHourRegularOnTheMoveIndustrieProduct.setTotalPrice(Double.valueOf(generalHoursOnTheMove) * workHourRegularOnTheMoveIndustrieProduct.getSellPriceIndustry());
+                    workHourRegularOnTheMoveIndustrieProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                     workHourRegularOnTheMoveIndustrieProduct.setBWorkHour(true);
                     workHourRegularOnTheMoveIndustrieProduct.setTeamNumber(0);
                     allProducts.add(workHourRegularOnTheMoveIndustrieProduct);
                 }
 
-                if(centrifugeHoursOnTheMove > 0){
+                if (centrifugeHoursOnTheMove > 0) {
                     Product workHourCentrifugeOnTheMoveIndustrieProduct = productService.getWorkhourForCentrifugeOnTheMove().get();
                     workHourCentrifugeOnTheMoveIndustrieProduct.setSelectedAmount(Double.valueOf(centrifugeHoursOnTheMove));
-                    workHourCentrifugeOnTheMoveIndustrieProduct.setTotalPrice(workHourCentrifugeOnTheMoveIndustrieProduct.getSellPriceIndustry()*Double.valueOf(centrifugeHoursOnTheMove));
+                    workHourCentrifugeOnTheMoveIndustrieProduct.setTotalPrice(Double.valueOf(centrifugeHoursOnTheMove) * workHourCentrifugeOnTheMoveIndustrieProduct.getSellPriceIndustry());
+                    workHourCentrifugeOnTheMoveIndustrieProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                     workHourCentrifugeOnTheMoveIndustrieProduct.setBWorkHour(true);
                     workHourCentrifugeOnTheMoveIndustrieProduct.setTeamNumber(0);
                     allProducts.add(workHourCentrifugeOnTheMoveIndustrieProduct);
                 }
 
-                if(programHoursOnTheMove > 0){
+                if (programHoursOnTheMove > 0) {
                     Product workHourProgramOnTheMoveIndustrieProduct = productService.getWorkhourForProgammationOnTheMove().get();
                     workHourProgramOnTheMoveIndustrieProduct.setSelectedAmount(Double.valueOf(programHoursOnTheMove));
-                    workHourProgramOnTheMoveIndustrieProduct.setTotalPrice(workHourProgramOnTheMoveIndustrieProduct.getSellPriceIndustry()*Double.valueOf(programHoursOnTheMove));
+                    workHourProgramOnTheMoveIndustrieProduct.setTotalPrice(Double.valueOf(programHoursOnTheMove) * workHourProgramOnTheMoveIndustrieProduct.getSellPriceIndustry());
+                    workHourProgramOnTheMoveIndustrieProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                     workHourProgramOnTheMoveIndustrieProduct.setBWorkHour(true);
                     workHourProgramOnTheMoveIndustrieProduct.setTeamNumber(0);
                     allProducts.add(workHourProgramOnTheMoveIndustrieProduct);
                 }
 
-            }
-
-            else{
-                if(generalHoursLocal > 0){
+            } else {
+                if (generalHoursLocal > 0) {
                     Product workHourRegularLocalAgroProduct = productService.getWorkhourForRegularLocal().get();
                     workHourRegularLocalAgroProduct.setSelectedAmount(Double.valueOf(generalHoursLocal));
-                    workHourRegularLocalAgroProduct.setTotalPrice(workHourRegularLocalAgroProduct.getSellPrice()*Double.valueOf(generalHoursLocal));
+                    workHourRegularLocalAgroProduct.setTotalPrice(Double.valueOf(generalHoursLocal) * workHourRegularLocalAgroProduct.getSellPrice());
+                    workHourRegularLocalAgroProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                     workHourRegularLocalAgroProduct.setBWorkHour(true);
                     workHourRegularLocalAgroProduct.setTeamNumber(0);
                     allProducts.add(workHourRegularLocalAgroProduct);
                 }
 
-                if(centrifugeHoursLocal > 0){
+                if (centrifugeHoursLocal > 0) {
                     Product workHourCentrifugeLocalAgroProduct = productService.getWorkhourForCentrifugeLocal().get();
                     workHourCentrifugeLocalAgroProduct.setSelectedAmount(Double.valueOf(centrifugeHoursLocal));
-                    workHourCentrifugeLocalAgroProduct.setTotalPrice(workHourCentrifugeLocalAgroProduct.getSellPrice()*Double.valueOf(centrifugeHoursLocal));
+                    workHourCentrifugeLocalAgroProduct.setTotalPrice(Double.valueOf(centrifugeHoursLocal) * workHourCentrifugeLocalAgroProduct.getSellPrice());
+                    workHourCentrifugeLocalAgroProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                     workHourCentrifugeLocalAgroProduct.setBWorkHour(true);
                     workHourCentrifugeLocalAgroProduct.setTeamNumber(0);
                     allProducts.add(workHourCentrifugeLocalAgroProduct);
                 }
 
-                if(programHoursLocal > 0){
+                if (programHoursLocal > 0) {
                     Product workHourProgramLocalAgroProduct = productService.getWorkhourForProgammationLocal().get();
                     workHourProgramLocalAgroProduct.setSelectedAmount(Double.valueOf(programHoursLocal));
-                    workHourProgramLocalAgroProduct.setTotalPrice(workHourProgramLocalAgroProduct.getSellPrice()*Double.valueOf(programHoursLocal));
+                    workHourProgramLocalAgroProduct.setTotalPrice(Double.valueOf(programHoursLocal) * workHourProgramLocalAgroProduct.getSellPrice());
+                    workHourProgramLocalAgroProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                     workHourProgramLocalAgroProduct.setBWorkHour(true);
                     workHourProgramLocalAgroProduct.setTeamNumber(0);
                     allProducts.add(workHourProgramLocalAgroProduct);
                 }
-                if(generalHoursOnTheMove > 0){
+                if (generalHoursOnTheMove > 0) {
                     Product workHourRegularOnTheMoveAgroProduct = productService.getWorkhourForRegularOnTheMove().get();
                     workHourRegularOnTheMoveAgroProduct.setSelectedAmount(Double.valueOf(generalHoursOnTheMove));
-                    workHourRegularOnTheMoveAgroProduct.setTotalPrice(workHourRegularOnTheMoveAgroProduct.getSellPrice()*Double.valueOf(generalHoursOnTheMove));
+                    workHourRegularOnTheMoveAgroProduct.setTotalPrice(Double.valueOf(generalHoursOnTheMove) * workHourRegularOnTheMoveAgroProduct.getSellPrice());
+                    workHourRegularOnTheMoveAgroProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                     workHourRegularOnTheMoveAgroProduct.setBWorkHour(true);
                     workHourRegularOnTheMoveAgroProduct.setTeamNumber(0);
                     allProducts.add(workHourRegularOnTheMoveAgroProduct);
                 }
 
-                if(centrifugeHoursOnTheMove > 0){
+                if (centrifugeHoursOnTheMove > 0) {
                     Product workHourCentrifugeOnTheMoveAgroProduct = productService.getWorkhourForCentrifugeOnTheMove().get();
                     workHourCentrifugeOnTheMoveAgroProduct.setSelectedAmount(Double.valueOf(centrifugeHoursOnTheMove));
-                    workHourCentrifugeOnTheMoveAgroProduct.setTotalPrice(workHourCentrifugeOnTheMoveAgroProduct.getSellPrice()*Double.valueOf(centrifugeHoursOnTheMove));
+                    workHourCentrifugeOnTheMoveAgroProduct.setTotalPrice(Double.valueOf(centrifugeHoursOnTheMove) * workHourCentrifugeOnTheMoveAgroProduct.getSellPrice());
+                    workHourCentrifugeOnTheMoveAgroProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                     workHourCentrifugeOnTheMoveAgroProduct.setBWorkHour(true);
                     workHourCentrifugeOnTheMoveAgroProduct.setTeamNumber(0);
                     allProducts.add(workHourCentrifugeOnTheMoveAgroProduct);
                 }
 
-                if(programHoursOnTheMove > 0){
+                if (programHoursOnTheMove > 0) {
                     Product workHourProgramOnTheMoveAgroProduct = productService.getWorkhourForProgammationOnTheMove().get();
                     workHourProgramOnTheMoveAgroProduct.setSelectedAmount(Double.valueOf(programHoursOnTheMove));
-                    workHourProgramOnTheMoveAgroProduct.setTotalPrice(workHourProgramOnTheMoveAgroProduct.getSellPrice()*Double.valueOf(programHoursOnTheMove));
+                    workHourProgramOnTheMoveAgroProduct.setTotalPrice(Double.valueOf(programHoursOnTheMove) * workHourProgramOnTheMoveAgroProduct.getSellPrice());
+                    workHourProgramOnTheMoveAgroProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                     workHourProgramOnTheMoveAgroProduct.setBWorkHour(true);
                     workHourProgramOnTheMoveAgroProduct.setTeamNumber(0);
                     allProducts.add(workHourProgramOnTheMoveAgroProduct);
@@ -515,197 +1179,215 @@ public class InvoiceServices {
             Double amountHoursCraneIntens = 0.0;
             Integer amountForfait = 0;
 
-            for(WorkOrder workOrder : workOrderSet) {
-                for (WorkOrderHeader workOrderHeader : workOrder.getWorkOrderHeaderList()) {
-                    if((workAddress.getDistance() != null) && (((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.VAN))) ||
-                            ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.ATEGO))))){
-                        amountKmRegular = amountKmRegular + (workAddress.getDistance());
-                        amountRidesRegular = amountRidesRegular + 1;
+
+            for (WorkOrderHeader workOrderHeader : workOrder.getWorkOrderHeaderList()) {
+                if ((workAddress.getDistance() != null) && ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.VAN))) ||
+                        ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.ATEGO)))) {
+                    amountKmRegular = amountKmRegular + (workAddress.getDistance());
+                    amountRidesRegular = amountRidesRegular + 1;
+                }
+                if ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_TRAILER))) {
+                    amountKmTrailer = amountKmTrailer + (workAddress.getDistance());
+                    amountRidesTrailer = amountRidesTrailer + 1;
+                }
+                if ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_CRANE))) {
+                    amountKmCrane = amountKmCrane + (workAddress.getDistance());
+                    amountRidesCrane = amountRidesCrane + 1;
+                    if (workOrderHeader.getFleetWorkType().equals(FleetWorkType.DELIVERY)) {
+                        amountForfait = ++amountForfait;
                     }
-                    if((workAddress.getDistance() != null) && (workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_TRAILER))){
-                        amountKmTrailer = amountKmTrailer + (workAddress.getDistance());
-                        amountRidesTrailer = amountRidesTrailer + 1;
+                }
+                if ((workOrderHeader.getFleetHours() != null) && (workOrderHeader.getFleetHours() >= 0.0)) {
+                    if (workOrderHeader.getFleetWorkType().equals(FleetWorkType.REGULAR)) {
+                        amountHoursCraneRegular = amountHoursCraneRegular + workOrderHeader.getFleetHours();
                     }
-                    if((workAddress.getDistance() != null) && (workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_CRANE))){
-                        amountKmCrane = amountKmCrane + (workAddress.getDistance());
-                        amountRidesCrane = amountRidesCrane + 1;
-                        if(workOrderHeader.getFleetWorkType().equals(FleetWorkType.DELIVERY)){
-                            amountForfait = ++amountForfait;
-                        }
-                    }
-                    if((workOrderHeader.getFleetHours() != null) && (workOrderHeader.getFleetHours() >= 0.0)){
-                        if(workOrderHeader.getFleetWorkType().equals(FleetWorkType.REGULAR)){
-                            amountHoursCraneRegular = amountHoursCraneRegular + workOrderHeader.getFleetHours();
-                        }
-                        if(workOrderHeader.getFleetWorkType().equals(FleetWorkType.INTENS)){
-                            amountHoursCraneIntens = amountHoursCraneIntens + workOrderHeader.getFleetHours();
-                        }
+                    if (workOrderHeader.getFleetWorkType().equals(FleetWorkType.INTENS)) {
+                        amountHoursCraneIntens = amountHoursCraneIntens + workOrderHeader.getFleetHours();
                     }
                 }
             }
 
-            if(optCustomer.get().getFirst().getBIndustry() == true){
-                if(amountKmRegular > 0.0){
+
+            if (optCustomer.get().getFirst().getBIndustry() == true) {
+                if (amountKmRegular > 0.0) {
                     Product regularKm = productService.getRegularKm().get();
                     regularKm.setSelectedAmount(amountKmRegular);
-                    regularKm.setTotalPrice(amountKmRegular*regularKm.getSellPriceIndustry());
-                    regularKm.setBTravel(true);
+                    regularKm.setTotalPrice(amountKmRegular * regularKm.getSellPriceIndustry());
                     regularKm.setTeamNumber(0);
+                    regularKm.setBTravel(true);
+                    regularKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesRegular > 1) {
                         regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
                     }
                     allProducts.add(regularKm);
                 }
-                if(amountKmTrailer > 0.0){
-                    Product forfaitTtrailer = productService.getWorkHoursTrailerForfait().get();
-                    forfaitTtrailer.setSelectedAmount(1.0);
-                    forfaitTtrailer.setTotalPrice(forfaitTtrailer.getSellPriceIndustry());
-                    forfaitTtrailer.setBTravel(true);
-                    forfaitTtrailer.setTeamNumber(0);
-                    allProducts.add(forfaitTtrailer);
-
-                    Product trailerKm = productService.getRegularTrailer().get();
-                    trailerKm.setSelectedAmount(amountKmTrailer);
-                    trailerKm.setTotalPrice(amountKmTrailer*trailerKm.getSellPriceIndustry());
-                    trailerKm.setBTravel(true);
-                    trailerKm.setTeamNumber(0);
-                    if(amountRidesRegular > 1) {
-                        trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
-                    }
-                    allProducts.add(trailerKm);
-                }
-                if(amountKmCrane > 0.0){
-                    Product craneKm = productService.getRegularCrane().get();
-                    craneKm.setSelectedAmount(amountKmCrane);
-                    craneKm.setTotalPrice(amountKmCrane*craneKm.getSellPriceIndustry());
-                    craneKm.setBTravel(true);
-                    craneKm.setTeamNumber(0);
-                    if(amountRidesRegular > 1) {
-                        craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
-                    }
-                    allProducts.add(craneKm);
-                }
-                if((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular >= 3.0)){
-                    Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
-                    hoursCraneRegularIndustry.setSelectedAmount(amountHoursCraneRegular);
-                    hoursCraneRegularIndustry.setTotalPrice(amountHoursCraneRegular*hoursCraneRegularIndustry.getSellPriceIndustry());
-                    hoursCraneRegularIndustry.setBTravel(true);
-                    hoursCraneRegularIndustry.setTeamNumber(0);
-                    allProducts.add(hoursCraneRegularIndustry);
-                }
-                else if((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular < 3.0)){
-                    Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
-                    hoursCraneRegularIndustry.setSelectedAmount(3.0);
-                    hoursCraneRegularIndustry.setTotalPrice(3.0*hoursCraneRegularIndustry.getSellPriceIndustry());
-                    hoursCraneRegularIndustry.setBTravel(true);
-                    hoursCraneRegularIndustry.setTeamNumber(0);
-                    allProducts.add(hoursCraneRegularIndustry);
-                }
-                else if((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens >= 4.0)){
-                    Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
-                    hoursCraneIntenseIndustry.setSelectedAmount(amountHoursCraneIntens);
-                    hoursCraneIntenseIndustry.setTotalPrice(amountHoursCraneIntens*hoursCraneIntenseIndustry.getSellPriceIndustry());
-                    hoursCraneIntenseIndustry.setBTravel(true);
-                    hoursCraneIntenseIndustry.setTeamNumber(0);
-                    allProducts.add(hoursCraneIntenseIndustry);
-                }
-                else if((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens < 4.0)){
-                    Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
-                    hoursCraneIntenseIndustry.setSelectedAmount(4.0);
-                    hoursCraneIntenseIndustry.setTotalPrice(4.0*hoursCraneIntenseIndustry.getSellPriceIndustry());
-                    hoursCraneIntenseIndustry.setBTravel(true);
-                    hoursCraneIntenseIndustry.setTeamNumber(0);
-                    allProducts.add(hoursCraneIntenseIndustry);
-                }
-                if(amountForfait > 0){
-                    Product hoursCraneForfaitIndustry = productService.getWorkHoursCraneForfait().get();
-                    hoursCraneForfaitIndustry.setSelectedAmount(Double.valueOf(amountForfait));
-                    hoursCraneForfaitIndustry.setTotalPrice(amountForfait*hoursCraneForfaitIndustry.getSellPriceIndustry());
-                    hoursCraneForfaitIndustry.setBTravel(true);
-                    hoursCraneForfaitIndustry.setTeamNumber(0);
-                    allProducts.add(hoursCraneForfaitIndustry);
-                }
-            }
-            else{
-                if(amountKmRegular > 0.0){
-                    Product regularKm = productService.getRegularKm().get();
-                    regularKm.setSelectedAmount(amountKmRegular);
-                    regularKm.setTotalPrice(amountKmRegular*regularKm.getSellPrice());
-                    regularKm.setBTravel(true);
-                    regularKm.setTeamNumber(0);
-                    if(amountRidesRegular > 1) {
-                        regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
-                    }
-                    allProducts.add(regularKm);
-                }
-                if(amountKmTrailer > 0.0){
-
+                if (amountKmTrailer > 0.0) {
                     Product forfaitTrailer = productService.getWorkHoursTrailerForfait().get();
                     forfaitTrailer.setSelectedAmount(1.0);
-                    forfaitTrailer.setTotalPrice(forfaitTrailer.getSellPrice());
-                    forfaitTrailer.setBTravel(true);
+                    forfaitTrailer.setTotalPrice(forfaitTrailer.getSellPriceIndustry());
                     forfaitTrailer.setTeamNumber(0);
+                    forfaitTrailer.setBTravel(true);
+                    forfaitTrailer.setDate(workOrder.getWorkDateTime().toLocalDate());
                     allProducts.add(forfaitTrailer);
 
                     Product trailerKm = productService.getRegularTrailer().get();
                     trailerKm.setSelectedAmount(amountKmTrailer);
-                    trailerKm.setTotalPrice(amountKmTrailer*trailerKm.getSellPrice());
-                    trailerKm.setBTravel(true);
+                    trailerKm.setTotalPrice(amountKmTrailer * trailerKm.getSellPriceIndustry());
                     trailerKm.setTeamNumber(0);
-                    if(amountRidesRegular > 1) {
+                    trailerKm.setBTravel(true);
+                    trailerKm.setDate(workOrder.getWorkDateTime().toLocalDate());
+                    if(amountRidesTrailer > 1) {
                         trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
                     }
                     allProducts.add(trailerKm);
                 }
-                if(amountKmCrane > 0.0){
+                if (amountKmCrane > 0.0) {
                     Product craneKm = productService.getRegularCrane().get();
                     craneKm.setSelectedAmount(amountKmCrane);
-                    craneKm.setTotalPrice(amountKmCrane*craneKm.getSellPrice());
-                    craneKm.setBTravel(true);
+                    craneKm.setTotalPrice(amountKmCrane * craneKm.getSellPriceIndustry());
                     craneKm.setTeamNumber(0);
-                    if(amountRidesRegular > 1) {
+                    craneKm.setBTravel(true);
+                    craneKm.setDate(workOrder.getWorkDateTime().toLocalDate());
+                    if(amountRidesCrane > 1) {
                         craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
                     }
                     allProducts.add(craneKm);
                 }
-                if((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular >= 3.0)){
+                if ((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular >= 3.0)) {
                     Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
                     hoursCraneRegularIndustry.setSelectedAmount(amountHoursCraneRegular);
-                    hoursCraneRegularIndustry.setTotalPrice(amountHoursCraneRegular*hoursCraneRegularIndustry.getSellPrice());
-                    hoursCraneRegularIndustry.setBTravel(true);
+                    hoursCraneRegularIndustry.setTotalPrice(amountHoursCraneRegular * hoursCraneRegularIndustry.getSellPriceIndustry());
                     hoursCraneRegularIndustry.setTeamNumber(0);
+                    hoursCraneRegularIndustry.setBTravel(true);
+                    hoursCraneRegularIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
                     allProducts.add(hoursCraneRegularIndustry);
                 }
-                else if((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular < 3.0)){
+                else if ((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular < 3.0)) {
                     Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
                     hoursCraneRegularIndustry.setSelectedAmount(3.0);
-                    hoursCraneRegularIndustry.setTotalPrice(3.0*hoursCraneRegularIndustry.getSellPrice());
-                    hoursCraneRegularIndustry.setBTravel(true);
+                    hoursCraneRegularIndustry.setTotalPrice(3.0 * hoursCraneRegularIndustry.getSellPriceIndustry());
                     hoursCraneRegularIndustry.setTeamNumber(0);
+                    hoursCraneRegularIndustry.setBTravel(true);
+                    hoursCraneRegularIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
                     allProducts.add(hoursCraneRegularIndustry);
                 }
-                else if((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens >= 4.0)){
+                else if ((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens >= 4.0)) {
                     Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
                     hoursCraneIntenseIndustry.setSelectedAmount(amountHoursCraneIntens);
-                    hoursCraneIntenseIndustry.setTotalPrice(amountHoursCraneIntens*hoursCraneIntenseIndustry.getSellPrice());
-                    hoursCraneIntenseIndustry.setBTravel(true);
+                    hoursCraneIntenseIndustry.setTotalPrice(amountHoursCraneIntens * hoursCraneIntenseIndustry.getSellPriceIndustry());
                     hoursCraneIntenseIndustry.setTeamNumber(0);
+                    hoursCraneIntenseIndustry.setBTravel(true);
+                    hoursCraneIntenseIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
                     allProducts.add(hoursCraneIntenseIndustry);
                 }
-                else if((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens < 4.0)){
+                else if ((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens < 4.0)) {
                     Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
                     hoursCraneIntenseIndustry.setSelectedAmount(4.0);
-                    hoursCraneIntenseIndustry.setTotalPrice(4.0*hoursCraneIntenseIndustry.getSellPrice());
-                    hoursCraneIntenseIndustry.setBTravel(true);
+                    hoursCraneIntenseIndustry.setTotalPrice(4.0 * hoursCraneIntenseIndustry.getSellPriceIndustry());
                     hoursCraneIntenseIndustry.setTeamNumber(0);
+                    hoursCraneIntenseIndustry.setBTravel(true);
+                    hoursCraneIntenseIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
                     allProducts.add(hoursCraneIntenseIndustry);
                 }
-                if(amountForfait > 0){
+                if (amountForfait > 0) {
                     Product hoursCraneForfaitIndustry = productService.getWorkHoursCraneForfait().get();
                     hoursCraneForfaitIndustry.setSelectedAmount(Double.valueOf(amountForfait));
-                    hoursCraneForfaitIndustry.setTotalPrice(amountForfait*hoursCraneForfaitIndustry.getSellPrice());
-                    hoursCraneForfaitIndustry.setBTravel(true);
+                    hoursCraneForfaitIndustry.setTotalPrice(amountForfait * hoursCraneForfaitIndustry.getSellPriceIndustry());
                     hoursCraneForfaitIndustry.setTeamNumber(0);
+                    hoursCraneForfaitIndustry.setBTravel(true);
+                    hoursCraneForfaitIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
+                    allProducts.add(hoursCraneForfaitIndustry);
+                }
+            } else {
+                if (amountKmRegular > 0.0) {
+                    Product regularKm = productService.getRegularKm().get();
+                    regularKm.setSelectedAmount(amountKmRegular);
+                    regularKm.setTotalPrice(amountKmRegular * regularKm.getSellPrice());
+                    regularKm.setTeamNumber(0);
+                    regularKm.setBTravel(true);
+                    regularKm.setDate(workOrder.getWorkDateTime().toLocalDate());
+                    if(amountRidesRegular > 1) {
+                        regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
+                    }
+                    allProducts.add(regularKm);
+                }
+                if (amountKmTrailer > 0.0) {
+
+                    Product forfaitTrailer = productService.getWorkHoursTrailerForfait().get();
+                    forfaitTrailer.setSelectedAmount(amountKmTrailer);
+                    forfaitTrailer.setTotalPrice(forfaitTrailer.getSellPrice());
+                    forfaitTrailer.setTeamNumber(0);
+                    forfaitTrailer.setBTravel(true);
+                    forfaitTrailer.setDate(workOrder.getWorkDateTime().toLocalDate());
+                    allProducts.add(forfaitTrailer);
+
+
+                    Product trailerKm = productService.getRegularTrailer().get();
+                    trailerKm.setSelectedAmount(amountKmTrailer);
+                    trailerKm.setTotalPrice(amountKmTrailer * trailerKm.getSellPrice());
+                    trailerKm.setTeamNumber(0);
+                    trailerKm.setBTravel(true);
+                    trailerKm.setDate(workOrder.getWorkDateTime().toLocalDate());
+                    if(amountRidesTrailer > 1) {
+                        trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
+                    }
+                    allProducts.add(trailerKm);
+                }
+                if (amountKmCrane > 0.0) {
+                    Product craneKm = productService.getRegularCrane().get();
+                    craneKm.setSelectedAmount(amountKmCrane);
+                    craneKm.setTotalPrice(amountKmCrane * craneKm.getSellPrice());
+                    craneKm.setTeamNumber(0);
+                    craneKm.setBTravel(true);
+                    craneKm.setDate(workOrder.getWorkDateTime().toLocalDate());
+                    if(amountRidesCrane > 1) {
+                        craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
+                    }
+                    allProducts.add(craneKm);
+                }
+                if ((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular >= 3.0)) {
+                    Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
+                    hoursCraneRegularIndustry.setSelectedAmount(amountHoursCraneRegular);
+                    hoursCraneRegularIndustry.setTotalPrice(amountHoursCraneRegular * hoursCraneRegularIndustry.getSellPrice());
+                    hoursCraneRegularIndustry.setTeamNumber(0);
+                    hoursCraneRegularIndustry.setBTravel(true);
+                    hoursCraneRegularIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
+                    allProducts.add(hoursCraneRegularIndustry);
+                }
+                else if ((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular < 3.0)) {
+                    Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
+                    hoursCraneRegularIndustry.setSelectedAmount(3.0);
+                    hoursCraneRegularIndustry.setTotalPrice(3.0 * hoursCraneRegularIndustry.getSellPrice());
+                    hoursCraneRegularIndustry.setTeamNumber(0);
+                    hoursCraneRegularIndustry.setBTravel(true);
+                    hoursCraneRegularIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
+                    allProducts.add(hoursCraneRegularIndustry);
+                }
+                else if ((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens >= 4.0)) {
+                    Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
+                    hoursCraneIntenseIndustry.setSelectedAmount(amountHoursCraneIntens);
+                    hoursCraneIntenseIndustry.setTotalPrice(amountHoursCraneIntens * hoursCraneIntenseIndustry.getSellPrice());
+                    hoursCraneIntenseIndustry.setTeamNumber(0);
+                    hoursCraneIntenseIndustry.setBTravel(true);
+                    hoursCraneIntenseIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
+                    allProducts.add(hoursCraneIntenseIndustry);
+                }
+                else if ((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens < 4.0)) {
+                    Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
+                    hoursCraneIntenseIndustry.setSelectedAmount(4.0);
+                    hoursCraneIntenseIndustry.setTotalPrice(4.0 * hoursCraneIntenseIndustry.getSellPrice());
+                    hoursCraneIntenseIndustry.setTeamNumber(0);
+                    hoursCraneIntenseIndustry.setBTravel(true);
+                    hoursCraneIntenseIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
+                    allProducts.add(hoursCraneIntenseIndustry);
+                }
+                if (amountForfait > 0) {
+                    Product hoursCraneForfaitIndustry = productService.getWorkHoursCraneForfait().get();
+                    hoursCraneForfaitIndustry.setSelectedAmount(Double.valueOf(amountForfait));
+                    hoursCraneForfaitIndustry.setTotalPrice(amountForfait * hoursCraneForfaitIndustry.getSellPrice());
+                    hoursCraneForfaitIndustry.setTeamNumber(0);
+                    hoursCraneForfaitIndustry.setBTravel(true);
+                    hoursCraneForfaitIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
                     allProducts.add(hoursCraneForfaitIndustry);
                 }
             }
@@ -714,92 +1396,80 @@ public class InvoiceServices {
 
             Double totalTax = 0.0;
             Double totalTunnelTax = 0.0;
-            for(WorkOrder workOrder : workOrderSet){
-                for(WorkOrderHeader workOrderHeader : workOrder.getWorkOrderHeaderList()){
-                    Double roadTax = 0.0;
-                    Double tunnelTax = 0.0;
-                    if((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.VAN))){
-                        if(workOrderHeader.getRoadTax() != null){
-                            roadTax = workOrderHeader.getRoadTax();
-                        }
-                        else{
-                            roadTax = 0.0;
-                        }
-                        if(workOrderHeader.getTunnelTax() != null){
-                            tunnelTax = workOrderHeader.getTunnelTax();
-                        }
-                        else{
-                            tunnelTax = 0.0;
-                        }
-                    }
-                    if((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.ATEGO))){
 
-                        if(workOrderHeader.getRoadTax() != null){
-                            if((workAddress.getRoadTaxAtego() != null) && (workAddress.getRoadTaxAtego() > workOrderHeader.getRoadTax())){
-                                roadTax = workAddress.getRoadTaxAtego();
-                            }
-                            else{
-                                roadTax = workOrderHeader.getRoadTax();
-                            }
-                        }
-                        else{
-                            roadTax = workAddress.getRoadTaxAtego();
-                        }
-                        if(workOrderHeader.getTunnelTax() != null){
-                            tunnelTax = workOrderHeader.getTunnelTax();
-                        }
-                        else{
-                            tunnelTax = 0.0;
-                        }
+            for (WorkOrderHeader workOrderHeader : workOrder.getWorkOrderHeaderList()) {
+                Double roadTax = 0.0;
+                Double tunnelTax = 0.0;
+                if ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.VAN))) {
+                    if (workOrderHeader.getRoadTax() != null) {
+                        roadTax = workOrderHeader.getRoadTax();
+                    } else {
+                        roadTax = 0.0;
                     }
-                    if((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_TRAILER))){
-                        if(workOrderHeader.getRoadTax() != null){
-                            if((workAddress.getRoadTaxActros() != null) && (workAddress.getRoadTaxActros() > workOrderHeader.getRoadTax())){
-                                roadTax = workAddress.getRoadTaxActros();
-                            }
-                            else{
-                                roadTax = workOrderHeader.getRoadTax();
-                            }
-                        }
-                        else{
-                            roadTax = workAddress.getRoadTaxActros();
-                        }
-                        if(workOrderHeader.getTunnelTax() != null){
-                            tunnelTax = workOrderHeader.getTunnelTax();
-                        }
-                        else{
-                            tunnelTax = 0.0;
-                        }
-                    }
-                    if((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_CRANE))){
-                        if(workOrderHeader.getRoadTax() != null){
-                            if((workAddress.getRoadTaxArocs() != null) && (workAddress.getRoadTaxArocs() > workOrderHeader.getRoadTax())){
-                                roadTax = workAddress.getRoadTaxArocs();
-                            }
-                            else{
-                                roadTax = workOrderHeader.getRoadTax();
-                            }
-                        }
-                        else{
-                            roadTax = workAddress.getRoadTaxArocs();
-                        }
-                        if(workOrderHeader.getTunnelTax() != null){
-                            tunnelTax = workOrderHeader.getTunnelTax();
-                        }
-                        else{
-                            tunnelTax = 0.0;
-                        }
-                    }
-                    if(roadTax != null){
-                        totalTax += roadTax;
-                    }
-                    if(tunnelTax != null){
-                        totalTunnelTax += tunnelTax;
+                    if (workOrderHeader.getTunnelTax() != null) {
+                        tunnelTax = workOrderHeader.getTunnelTax();
+                    } else {
+                        tunnelTax = 0.0;
                     }
                 }
+                if ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.ATEGO))) {
+
+                    if (workOrderHeader.getRoadTax() != null) {
+                        if ((workAddress.getRoadTaxAtego() != null) && (workAddress.getRoadTaxAtego() > workOrderHeader.getRoadTax())) {
+                            roadTax = workAddress.getRoadTaxAtego();
+                        } else {
+                            roadTax = workOrderHeader.getRoadTax();
+                        }
+                    } else {
+                        roadTax = Optional.ofNullable(workAddress.getRoadTaxAtego())
+                                .orElse(0.0);
+                    }
+                    if (workOrderHeader.getTunnelTax() != null) {
+                        tunnelTax = workOrderHeader.getTunnelTax();
+                    } else {
+                        tunnelTax = 0.0;
+                    }
+                }
+                if ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_TRAILER))) {
+                    if (workOrderHeader.getRoadTax() != null) {
+                        if ((workAddress.getRoadTaxActros() != null) && (workAddress.getRoadTaxActros() > workOrderHeader.getRoadTax())) {
+                            roadTax = workAddress.getRoadTaxActros();
+                        } else {
+                            roadTax = workOrderHeader.getRoadTax();
+                        }
+                    } else {
+                        roadTax = Optional.ofNullable(workAddress.getRoadTaxActros())
+                                .orElse(0.0);
+                    }
+                    if (workOrderHeader.getTunnelTax() != null) {
+                        tunnelTax = workOrderHeader.getTunnelTax();
+                    } else {
+                        tunnelTax = 0.0;
+                    }
+                }
+                if ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_CRANE))) {
+                    if (workOrderHeader.getRoadTax() != null) {
+                        if ((workAddress.getRoadTaxArocs() != null) && (workAddress.getRoadTaxArocs() > workOrderHeader.getRoadTax())) {
+                            roadTax = workAddress.getRoadTaxArocs();
+                        } else {
+                            roadTax = workOrderHeader.getRoadTax();
+                        }
+                    } else {
+                        roadTax = Optional.ofNullable(workAddress.getRoadTaxArocs())
+                                .orElse(0.0);
+                    }
+                    if (workOrderHeader.getTunnelTax() != null) {
+                        tunnelTax = workOrderHeader.getTunnelTax();
+                    } else {
+                        tunnelTax = 0.0;
+                    }
+                }
+                totalTax += roadTax;
+                totalTunnelTax += tunnelTax;
             }
 
-            if(totalTax > 0.0){
+
+            if (totalTax > 0.0) {
                 Product roadTaxProduct = new Product();
                 roadTaxProduct.setSelectedAmount(1.0);
                 roadTaxProduct.setInternalName("Wegentaks");
@@ -808,10 +1478,11 @@ public class InvoiceServices {
                 roadTaxProduct.setBTravel(true);
                 roadTaxProduct.setVat(VAT.EENENTWINTIG);
                 roadTaxProduct.setTeamNumber(0);
+                roadTaxProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                 allProducts.add(roadTaxProduct);
             }
 
-            if (totalTunnelTax > 0.0){
+            if (totalTunnelTax > 0.0) {
                 Product tunnelTaxProduct = new Product();
                 tunnelTaxProduct.setSelectedAmount(1.0);
                 tunnelTaxProduct.setInternalName("tunneltaks");
@@ -820,697 +1491,28 @@ public class InvoiceServices {
                 tunnelTaxProduct.setBTravel(true);
                 tunnelTaxProduct.setVat(VAT.EENENTWINTIG);
                 tunnelTaxProduct.setTeamNumber(0);
+                tunnelTaxProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
                 allProducts.add(tunnelTaxProduct);
             }
 
-            //All products has to have the same date as the starter.
-            //this because it is a merged invoice with possibly one attachement
-            LocalDateTime starterDateTime = workOrderSet.stream().filter(workorder -> workorder.getStarter() == true).findFirst().get().getWorkDateTime();
-            allProducts.stream().forEach(product -> product.setDate(starterDateTime.toLocalDate()));
+            Product emptyProduct1 = new Product();
+            emptyProduct1.setTeamNumber(0);
+            emptyProduct1.setBComment(true);
+            emptyProduct1.setInternalName("");
+            emptyProduct1.setDate(workOrder.getWorkDateTime().toLocalDate());
+            allProducts.add(emptyProduct1);
 
             invoice.setProductList(allProducts);
+
             checkIfToolsHoursAreSubtractedFromWorkOrder(invoice);
         }
+
         return invoice;
     }
 
-    public Invoice getnerateInvoicePerDay(Set<WorkOrder> workOrderSet) {
+    public List<String> generateInvoicePDF(Invoice invoice){
 
-        List<WorkOrder> sortedWorkOrderList = new ArrayList<>(workOrderSet);
-        sortedWorkOrderList.sort(Comparator.comparing(WorkOrder::getWorkDateTime));
-
-        Invoice invoice = new Invoice();
-        invoice.setInvoiceNumber(getNewProFormaInvoiceNumber());
-        invoice.setInvoiceDate(LocalDate.now());
-        invoice.setExpiryDate(LocalDate.now().plusDays(14));
-        invoice.setBFinalInvoice(false);
-
-        Address workAddress = sortedWorkOrderList.stream().findFirst().get().getWorkAddress();
-        invoice.setWorkAddress(workAddress);
-        Optional<List<Customer>> optCustomer = customerService.getCustomerByWorkAddress(workAddress)
-        ;
-        if(optCustomer.isEmpty()){
-            Customer customer = new Customer();
-            customer.setId(LocalDateTime.now().toString());
-            customer.setName(workAddress.getAddressName());
-            customer.setVatNumber("");
-            customer.setComment("");
-            customer.setAlertMessage("");
-            List<Address>addressList = new ArrayList<>();
-            Address address = new Address();
-            addressList.add(address);
-            customer.setAddresses(addressList);
-            optCustomer = Optional.of(List.of(customer));
-        }
-        else {
-            if (optCustomer.get().size() >= 2) {
-                Notification.show("Er zijn meerdere klanten met hetzelfde Werkadres");
-            }
-            invoice.setCustomer(optCustomer.get().get(0));
-
-            List<String> allFotoIds = sortedWorkOrderList.stream()
-                    .map(WorkOrder::getImageList)
-                    .filter(Objects::nonNull)
-                    .flatMap(List::stream)
-                    .collect(Collectors.toList());
-            invoice.setImageList(allFotoIds);
-
-            invoice.setWorkOrderList(new LinkedHashSet<>(sortedWorkOrderList));
-
-            List<Product> allProducts = new ArrayList<>();
-
-            for (WorkOrder workOrder : sortedWorkOrderList) {
-
-                //generate empty line
-//                Product emptyLine = new Product();
-//                emptyLine.setDate(workOrder.getWorkDateTime().toLocalDate());
-//                emptyLine.setTeamNumber(0);
-//                emptyLine.setBComment(true);
-//                allProducts.add(emptyLine);
-
-                //generate Comments/Products per day
-                //place comment first
-
-
-                try {
-                    String comment = workOrder.getWorkOrderHeaderList().getFirst().getDescription();
-
-                    if (comment != null && !comment.isBlank()) {
-
-                        List<String> commentRowList = splitText(comment, 90);
-
-                        for (String row : commentRowList) {
-                            Product newProduct = new Product();
-                            newProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                            newProduct.setInternalName(row);
-                            newProduct.setTeamNumber(0);
-                            newProduct.setBComment(true);
-                            allProducts.add(newProduct);
-                        }
-                    }
-                } catch (Exception e) {
-                    Notification.show("De starter bevat geen commentaar voor op de proforma!");
-                }
-
-                //retrieve selected Products
-                List<Product> selectedProducts = workOrder.getProductList().stream()
-                        .filter(Objects::nonNull)
-                        .filter((product -> (product.getInternalName() != null) && (product.getInternalName().length() > 0)))
-                        .collect(Collectors.toList());
-
-                //add date of looped Workorder to the Products so we can generate right attachements!
-                selectedProducts.stream().forEach(product -> product.setDate(workOrder.getWorkDateTime().toLocalDate()));
-
-                //sort selected Products
-                Comparator<Product> productComparator = (o1, o2) -> compareOnderdeel(o1.getInternalName(), o2.getInternalName());
-                selectedProducts.sort(productComparator);
-
-                //place all options at the bottom of the list
-                selectedProducts.sort(Comparator.comparing(
-                        p -> (p.getProductLevel1() != null) && ("Extra".equalsIgnoreCase(p.getProductLevel1().getName()))
-                ));
-
-                //add sorted Products to list
-                allProducts.addAll(selectedProducts);
-
-
-                Double generalHoursOnTheMove = 0.0;
-                Double programHoursOnTheMove = 0.0;
-                Double centrifugeHoursOnTheMove = 0.0;
-
-                Double generalHoursLocal = 0.0;
-                Double programHoursLocal = 0.0;
-                Double centrifugeHoursLocal = 0.0;
-
-                int i = 0;
-                for (WorkOrderHeader workOrderHeader : workOrder.getWorkOrderHeaderList()) {
-
-                    int numberOfTechnicians = 0;
-
-                    if ((workOrder.getWorkOrderHeaderList() != null) && (workOrder.getWorkOrderHeaderList().size() > 0) && (workOrderHeader.getWorkOrderTimeList() != null)) {
-                        if (i == 0) {
-                            numberOfTechnicians = numberOfTechnicians + 1 + workOrder.getExtraEmployeesTeam1().size();
-                        }
-                        if (i == 1) {
-                            numberOfTechnicians = numberOfTechnicians + 1 + workOrder.getExtraEmployeesTeam2().size();
-                        }
-                        if (i == 2) {
-                            numberOfTechnicians = numberOfTechnicians + 1 + workOrder.getExtraEmployeesTeam3().size();
-                        }
-                        if (i == 3) {
-                            numberOfTechnicians = numberOfTechnicians + 1 + workOrder.getExtraEmployeesTeam4().size();
-                        }
-                        if ((workOrder.getWorkLocation().equals(WorkLocation.ON_THE_MOVE)) && (workOrderHeader.getWorkType() == WorkType.GENERAL)) {
-                            for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
-                                generalHoursOnTheMove = generalHoursOnTheMove + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeUp(), workOrderTime.getTimeDown()).toMinutes())-workOrderTime.getPauze()) / 60.0);
-                            }
-                        }
-                        if ((workOrder.getWorkLocation().equals(WorkLocation.ON_THE_MOVE) && (workOrderHeader.getWorkType()) == WorkType.CENTRIFUGE)) {
-                            for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
-                                centrifugeHoursOnTheMove = centrifugeHoursOnTheMove + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeUp(), workOrderTime.getTimeDown()).toMinutes())-workOrderTime.getPauze()) / 60.0);
-                            }
-                        }
-                        if ((workOrder.getWorkLocation().equals(WorkLocation.ON_THE_MOVE) && (workOrderHeader.getWorkType()) == WorkType.PROGRAMMATIC)) {
-                            for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
-                                programHoursOnTheMove = programHoursOnTheMove + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeUp(), workOrderTime.getTimeDown()).toMinutes())-workOrderTime.getPauze()) / 60.0);
-                            }
-                        }
-                        if ((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE)) && (workOrderHeader.getWorkType() == WorkType.GENERAL)) {
-                            for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
-                                generalHoursLocal = generalHoursLocal + (numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze()) / 60.0));
-                            }
-                        }
-                        if ((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE) && (workOrderHeader.getWorkType()) == WorkType.CENTRIFUGE)) {
-                            for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
-                                centrifugeHoursLocal = centrifugeHoursLocal + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze()) / 60.0);
-                            }
-                        }
-                        if ((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE) && (workOrderHeader.getWorkType()) == WorkType.PROGRAMMATIC)) {
-                            for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
-                                programHoursLocal = programHoursLocal + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze()) / 60.0);
-                            }
-                        }
-                        i++;
-                    }
-                }
-
-                if (optCustomer.get().getFirst().getBIndustry() == true) {
-
-                    if (generalHoursLocal > 0) {
-                        Product workHourRegularLocalIndustrieProduct = productService.getWorkhourForRegularLocal().get();
-                        workHourRegularLocalIndustrieProduct.setSelectedAmount(Double.valueOf(generalHoursLocal));
-                        workHourRegularLocalIndustrieProduct.setTotalPrice(Double.valueOf(generalHoursLocal) * workHourRegularLocalIndustrieProduct.getSellPriceIndustry());
-                        workHourRegularLocalIndustrieProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        workHourRegularLocalIndustrieProduct.setBWorkHour(true);
-                        workHourRegularLocalIndustrieProduct.setTeamNumber(0);
-                        allProducts.add(workHourRegularLocalIndustrieProduct);
-                    }
-
-                    if (centrifugeHoursLocal > 0) {
-                        Product workHourCentrifugeLocalIndustrieProduct = productService.getWorkhourForCentrifugeLocal().get();
-                        workHourCentrifugeLocalIndustrieProduct.setSelectedAmount(Double.valueOf(centrifugeHoursLocal));
-                        workHourCentrifugeLocalIndustrieProduct.setTotalPrice(Double.valueOf(centrifugeHoursLocal) * workHourCentrifugeLocalIndustrieProduct.getSellPriceIndustry());
-                        workHourCentrifugeLocalIndustrieProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        workHourCentrifugeLocalIndustrieProduct.setBWorkHour(true);
-                        workHourCentrifugeLocalIndustrieProduct.setTeamNumber(0);
-                        allProducts.add(workHourCentrifugeLocalIndustrieProduct);
-                    }
-
-                    if (programHoursLocal > 0) {
-                        Product workHourProgramLocalIndustrieProduct = productService.getWorkhourForProgammationLocal().get();
-                        workHourProgramLocalIndustrieProduct.setSelectedAmount(Double.valueOf(programHoursLocal));
-                        workHourProgramLocalIndustrieProduct.setTotalPrice(Double.valueOf(programHoursLocal) * workHourProgramLocalIndustrieProduct.getSellPriceIndustry());
-                        workHourProgramLocalIndustrieProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        workHourProgramLocalIndustrieProduct.setBWorkHour(true);
-                        workHourProgramLocalIndustrieProduct.setTeamNumber(0);
-                        allProducts.add(workHourProgramLocalIndustrieProduct);
-                    }
-
-                    if (generalHoursOnTheMove > 0) {
-                        Product workHourRegularOnTheMoveIndustrieProduct = productService.getWorkhourForRegularOnTheMove().get();
-                        workHourRegularOnTheMoveIndustrieProduct.setSelectedAmount(Double.valueOf(generalHoursOnTheMove));
-                        workHourRegularOnTheMoveIndustrieProduct.setTotalPrice(Double.valueOf(generalHoursOnTheMove) * workHourRegularOnTheMoveIndustrieProduct.getSellPriceIndustry());
-                        workHourRegularOnTheMoveIndustrieProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        workHourRegularOnTheMoveIndustrieProduct.setBWorkHour(true);
-                        workHourRegularOnTheMoveIndustrieProduct.setTeamNumber(0);
-                        allProducts.add(workHourRegularOnTheMoveIndustrieProduct);
-                    }
-
-                    if (centrifugeHoursOnTheMove > 0) {
-                        Product workHourCentrifugeOnTheMoveIndustrieProduct = productService.getWorkhourForCentrifugeOnTheMove().get();
-                        workHourCentrifugeOnTheMoveIndustrieProduct.setSelectedAmount(Double.valueOf(centrifugeHoursOnTheMove));
-                        workHourCentrifugeOnTheMoveIndustrieProduct.setTotalPrice(Double.valueOf(centrifugeHoursOnTheMove) * workHourCentrifugeOnTheMoveIndustrieProduct.getSellPriceIndustry());
-                        workHourCentrifugeOnTheMoveIndustrieProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        workHourCentrifugeOnTheMoveIndustrieProduct.setBWorkHour(true);
-                        workHourCentrifugeOnTheMoveIndustrieProduct.setTeamNumber(0);
-                        allProducts.add(workHourCentrifugeOnTheMoveIndustrieProduct);
-                    }
-
-                    if (programHoursOnTheMove > 0) {
-                        Product workHourProgramOnTheMoveIndustrieProduct = productService.getWorkhourForProgammationOnTheMove().get();
-                        workHourProgramOnTheMoveIndustrieProduct.setSelectedAmount(Double.valueOf(programHoursOnTheMove));
-                        workHourProgramOnTheMoveIndustrieProduct.setTotalPrice(Double.valueOf(programHoursOnTheMove) * workHourProgramOnTheMoveIndustrieProduct.getSellPriceIndustry());
-                        workHourProgramOnTheMoveIndustrieProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        workHourProgramOnTheMoveIndustrieProduct.setBWorkHour(true);
-                        workHourProgramOnTheMoveIndustrieProduct.setTeamNumber(0);
-                        allProducts.add(workHourProgramOnTheMoveIndustrieProduct);
-                    }
-
-                } else {
-                    if (generalHoursLocal > 0) {
-                        Product workHourRegularLocalAgroProduct = productService.getWorkhourForRegularLocal().get();
-                        workHourRegularLocalAgroProduct.setSelectedAmount(Double.valueOf(generalHoursLocal));
-                        workHourRegularLocalAgroProduct.setTotalPrice(Double.valueOf(generalHoursLocal) * workHourRegularLocalAgroProduct.getSellPrice());
-                        workHourRegularLocalAgroProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        workHourRegularLocalAgroProduct.setBWorkHour(true);
-                        workHourRegularLocalAgroProduct.setTeamNumber(0);
-                        allProducts.add(workHourRegularLocalAgroProduct);
-                    }
-
-                    if (centrifugeHoursLocal > 0) {
-                        Product workHourCentrifugeLocalAgroProduct = productService.getWorkhourForCentrifugeLocal().get();
-                        workHourCentrifugeLocalAgroProduct.setSelectedAmount(Double.valueOf(centrifugeHoursLocal));
-                        workHourCentrifugeLocalAgroProduct.setTotalPrice(Double.valueOf(centrifugeHoursLocal) * workHourCentrifugeLocalAgroProduct.getSellPrice());
-                        workHourCentrifugeLocalAgroProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        workHourCentrifugeLocalAgroProduct.setBWorkHour(true);
-                        workHourCentrifugeLocalAgroProduct.setTeamNumber(0);
-                        allProducts.add(workHourCentrifugeLocalAgroProduct);
-                    }
-
-                    if (programHoursLocal > 0) {
-                        Product workHourProgramLocalAgroProduct = productService.getWorkhourForProgammationLocal().get();
-                        workHourProgramLocalAgroProduct.setSelectedAmount(Double.valueOf(programHoursLocal));
-                        workHourProgramLocalAgroProduct.setTotalPrice(Double.valueOf(programHoursLocal) * workHourProgramLocalAgroProduct.getSellPrice());
-                        workHourProgramLocalAgroProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        workHourProgramLocalAgroProduct.setBWorkHour(true);
-                        workHourProgramLocalAgroProduct.setTeamNumber(0);
-                        allProducts.add(workHourProgramLocalAgroProduct);
-                    }
-                    if (generalHoursOnTheMove > 0) {
-                        Product workHourRegularOnTheMoveAgroProduct = productService.getWorkhourForRegularOnTheMove().get();
-                        workHourRegularOnTheMoveAgroProduct.setSelectedAmount(Double.valueOf(generalHoursOnTheMove));
-                        workHourRegularOnTheMoveAgroProduct.setTotalPrice(Double.valueOf(generalHoursOnTheMove) * workHourRegularOnTheMoveAgroProduct.getSellPrice());
-                        workHourRegularOnTheMoveAgroProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        workHourRegularOnTheMoveAgroProduct.setBWorkHour(true);
-                        workHourRegularOnTheMoveAgroProduct.setTeamNumber(0);
-                        allProducts.add(workHourRegularOnTheMoveAgroProduct);
-                    }
-
-                    if (centrifugeHoursOnTheMove > 0) {
-                        Product workHourCentrifugeOnTheMoveAgroProduct = productService.getWorkhourForCentrifugeOnTheMove().get();
-                        workHourCentrifugeOnTheMoveAgroProduct.setSelectedAmount(Double.valueOf(centrifugeHoursOnTheMove));
-                        workHourCentrifugeOnTheMoveAgroProduct.setTotalPrice(Double.valueOf(centrifugeHoursOnTheMove) * workHourCentrifugeOnTheMoveAgroProduct.getSellPrice());
-                        workHourCentrifugeOnTheMoveAgroProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        workHourCentrifugeOnTheMoveAgroProduct.setBWorkHour(true);
-                        workHourCentrifugeOnTheMoveAgroProduct.setTeamNumber(0);
-                        allProducts.add(workHourCentrifugeOnTheMoveAgroProduct);
-                    }
-
-                    if (programHoursOnTheMove > 0) {
-                        Product workHourProgramOnTheMoveAgroProduct = productService.getWorkhourForProgammationOnTheMove().get();
-                        workHourProgramOnTheMoveAgroProduct.setSelectedAmount(Double.valueOf(programHoursOnTheMove));
-                        workHourProgramOnTheMoveAgroProduct.setTotalPrice(Double.valueOf(programHoursOnTheMove) * workHourProgramOnTheMoveAgroProduct.getSellPrice());
-                        workHourProgramOnTheMoveAgroProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        workHourProgramOnTheMoveAgroProduct.setBWorkHour(true);
-                        workHourProgramOnTheMoveAgroProduct.setTeamNumber(0);
-                        allProducts.add(workHourProgramOnTheMoveAgroProduct);
-                    }
-                }
-
-                // add movement to Proforma
-                Double amountKmRegular = 0.0;
-                Integer amountRidesRegular = 0;
-                Double amountKmTrailer = 0.0;
-                Integer amountRidesTrailer = 0;
-                Double amountKmCrane = 0.0;
-                Integer amountRidesCrane = 0;
-                Double amountHoursCraneRegular = 0.0;
-                Double amountHoursCraneIntens = 0.0;
-                Integer amountForfait = 0;
-
-
-                for (WorkOrderHeader workOrderHeader : workOrder.getWorkOrderHeaderList()) {
-                    if ((workAddress.getDistance() != null) && ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.VAN))) ||
-                            ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.ATEGO)))) {
-                        amountKmRegular = amountKmRegular + (workAddress.getDistance());
-                        amountRidesRegular = amountRidesRegular + 1;
-                    }
-                    if ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_TRAILER))) {
-                        amountKmTrailer = amountKmTrailer + (workAddress.getDistance());
-                        amountRidesTrailer = amountRidesTrailer + 1;
-                    }
-                    if ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_CRANE))) {
-                        amountKmCrane = amountKmCrane + (workAddress.getDistance());
-                        amountRidesCrane = amountRidesCrane + 1;
-                        if (workOrderHeader.getFleetWorkType().equals(FleetWorkType.DELIVERY)) {
-                            amountForfait = ++amountForfait;
-                        }
-                    }
-                    if ((workOrderHeader.getFleetHours() != null) && (workOrderHeader.getFleetHours() >= 0.0)) {
-                        if (workOrderHeader.getFleetWorkType().equals(FleetWorkType.REGULAR)) {
-                            amountHoursCraneRegular = amountHoursCraneRegular + workOrderHeader.getFleetHours();
-                        }
-                        if (workOrderHeader.getFleetWorkType().equals(FleetWorkType.INTENS)) {
-                            amountHoursCraneIntens = amountHoursCraneIntens + workOrderHeader.getFleetHours();
-                        }
-                    }
-                }
-
-
-                if (optCustomer.get().getFirst().getBIndustry() == true) {
-                    if (amountKmRegular > 0.0) {
-                        Product regularKm = productService.getRegularKm().get();
-                        regularKm.setSelectedAmount(amountKmRegular);
-                        regularKm.setTotalPrice(amountKmRegular * regularKm.getSellPriceIndustry());
-                        regularKm.setTeamNumber(0);
-                        regularKm.setBTravel(true);
-                        regularKm.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        if(amountRidesRegular > 1) {
-                            regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
-                        }
-                        allProducts.add(regularKm);
-                    }
-                    if (amountKmTrailer > 0.0) {
-                        Product forfaitTrailer = productService.getWorkHoursTrailerForfait().get();
-                        forfaitTrailer.setSelectedAmount(1.0);
-                        forfaitTrailer.setTotalPrice(forfaitTrailer.getSellPriceIndustry());
-                        forfaitTrailer.setTeamNumber(0);
-                        forfaitTrailer.setBTravel(true);
-                        forfaitTrailer.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        allProducts.add(forfaitTrailer);
-
-                        Product trailerKm = productService.getRegularTrailer().get();
-                        trailerKm.setSelectedAmount(amountKmTrailer);
-                        trailerKm.setTotalPrice(amountKmTrailer * trailerKm.getSellPriceIndustry());
-                        trailerKm.setTeamNumber(0);
-                        trailerKm.setBTravel(true);
-                        trailerKm.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        if(amountRidesTrailer > 1) {
-                            trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
-                        }
-                        allProducts.add(trailerKm);
-                    }
-                    if (amountKmCrane > 0.0) {
-                        Product craneKm = productService.getRegularCrane().get();
-                        craneKm.setSelectedAmount(amountKmCrane);
-                        craneKm.setTotalPrice(amountKmCrane * craneKm.getSellPriceIndustry());
-                        craneKm.setTeamNumber(0);
-                        craneKm.setBTravel(true);
-                        craneKm.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        if(amountRidesCrane > 1) {
-                            craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
-                        }
-                        allProducts.add(craneKm);
-                    }
-                    if ((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular >= 3.0)) {
-                        Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
-                        hoursCraneRegularIndustry.setSelectedAmount(amountHoursCraneRegular);
-                        hoursCraneRegularIndustry.setTotalPrice(amountHoursCraneRegular * hoursCraneRegularIndustry.getSellPriceIndustry());
-                        hoursCraneRegularIndustry.setTeamNumber(0);
-                        hoursCraneRegularIndustry.setBTravel(true);
-                        hoursCraneRegularIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        allProducts.add(hoursCraneRegularIndustry);
-                    }
-                    else if ((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular < 3.0)) {
-                        Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
-                        hoursCraneRegularIndustry.setSelectedAmount(3.0);
-                        hoursCraneRegularIndustry.setTotalPrice(3.0 * hoursCraneRegularIndustry.getSellPriceIndustry());
-                        hoursCraneRegularIndustry.setTeamNumber(0);
-                        hoursCraneRegularIndustry.setBTravel(true);
-                        hoursCraneRegularIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        allProducts.add(hoursCraneRegularIndustry);
-                    }
-                    else if ((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens >= 4.0)) {
-                        Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
-                        hoursCraneIntenseIndustry.setSelectedAmount(amountHoursCraneIntens);
-                        hoursCraneIntenseIndustry.setTotalPrice(amountHoursCraneIntens * hoursCraneIntenseIndustry.getSellPriceIndustry());
-                        hoursCraneIntenseIndustry.setTeamNumber(0);
-                        hoursCraneIntenseIndustry.setBTravel(true);
-                        hoursCraneIntenseIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        allProducts.add(hoursCraneIntenseIndustry);
-                    }
-                    else if ((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens < 4.0)) {
-                        Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
-                        hoursCraneIntenseIndustry.setSelectedAmount(4.0);
-                        hoursCraneIntenseIndustry.setTotalPrice(4.0 * hoursCraneIntenseIndustry.getSellPriceIndustry());
-                        hoursCraneIntenseIndustry.setTeamNumber(0);
-                        hoursCraneIntenseIndustry.setBTravel(true);
-                        hoursCraneIntenseIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        allProducts.add(hoursCraneIntenseIndustry);
-                    }
-                    if (amountForfait > 0) {
-                        Product hoursCraneForfaitIndustry = productService.getWorkHoursCraneForfait().get();
-                        hoursCraneForfaitIndustry.setSelectedAmount(Double.valueOf(amountForfait));
-                        hoursCraneForfaitIndustry.setTotalPrice(amountForfait * hoursCraneForfaitIndustry.getSellPriceIndustry());
-                        hoursCraneForfaitIndustry.setTeamNumber(0);
-                        hoursCraneForfaitIndustry.setBTravel(true);
-                        hoursCraneForfaitIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        allProducts.add(hoursCraneForfaitIndustry);
-                    }
-                } else {
-                    if (amountKmRegular > 0.0) {
-                        Product regularKm = productService.getRegularKm().get();
-                        regularKm.setSelectedAmount(amountKmRegular);
-                        regularKm.setTotalPrice(amountKmRegular * regularKm.getSellPrice());
-                        regularKm.setTeamNumber(0);
-                        regularKm.setBTravel(true);
-                        regularKm.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        if(amountRidesRegular > 1) {
-                            regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
-                        }
-                        allProducts.add(regularKm);
-                    }
-                    if (amountKmTrailer > 0.0) {
-
-                        Product forfaitTrailer = productService.getWorkHoursTrailerForfait().get();
-                        forfaitTrailer.setSelectedAmount(amountKmTrailer);
-                        forfaitTrailer.setTotalPrice(forfaitTrailer.getSellPrice());
-                        forfaitTrailer.setTeamNumber(0);
-                        forfaitTrailer.setBTravel(true);
-                        forfaitTrailer.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        allProducts.add(forfaitTrailer);
-
-
-                        Product trailerKm = productService.getRegularTrailer().get();
-                        trailerKm.setSelectedAmount(amountKmTrailer);
-                        trailerKm.setTotalPrice(amountKmTrailer * trailerKm.getSellPrice());
-                        trailerKm.setTeamNumber(0);
-                        trailerKm.setBTravel(true);
-                        trailerKm.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        if(amountRidesTrailer > 1) {
-                            trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
-                        }
-                        allProducts.add(trailerKm);
-                    }
-                    if (amountKmCrane > 0.0) {
-                        Product craneKm = productService.getRegularCrane().get();
-                        craneKm.setSelectedAmount(amountKmCrane);
-                        craneKm.setTotalPrice(amountKmCrane * craneKm.getSellPrice());
-                        craneKm.setTeamNumber(0);
-                        craneKm.setBTravel(true);
-                        craneKm.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        if(amountRidesCrane > 1) {
-                            craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
-                        }
-                        allProducts.add(craneKm);
-                    }
-                    if ((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular >= 3.0)) {
-                        Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
-                        hoursCraneRegularIndustry.setSelectedAmount(amountHoursCraneRegular);
-                        hoursCraneRegularIndustry.setTotalPrice(amountHoursCraneRegular * hoursCraneRegularIndustry.getSellPrice());
-                        hoursCraneRegularIndustry.setTeamNumber(0);
-                        hoursCraneRegularIndustry.setBTravel(true);
-                        hoursCraneRegularIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        allProducts.add(hoursCraneRegularIndustry);
-                    }
-                    else if ((amountHoursCraneRegular > 0.0) && (amountHoursCraneRegular < 3.0)) {
-                        Product hoursCraneRegularIndustry = productService.getWorkHoursCraneRegular().get();
-                        hoursCraneRegularIndustry.setSelectedAmount(3.0);
-                        hoursCraneRegularIndustry.setTotalPrice(3.0 * hoursCraneRegularIndustry.getSellPrice());
-                        hoursCraneRegularIndustry.setTeamNumber(0);
-                        hoursCraneRegularIndustry.setBTravel(true);
-                        hoursCraneRegularIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        allProducts.add(hoursCraneRegularIndustry);
-                    }
-                    else if ((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens >= 4.0)) {
-                        Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
-                        hoursCraneIntenseIndustry.setSelectedAmount(amountHoursCraneIntens);
-                        hoursCraneIntenseIndustry.setTotalPrice(amountHoursCraneIntens * hoursCraneIntenseIndustry.getSellPrice());
-                        hoursCraneIntenseIndustry.setTeamNumber(0);
-                        hoursCraneIntenseIndustry.setBTravel(true);
-                        hoursCraneIntenseIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        allProducts.add(hoursCraneIntenseIndustry);
-                    }
-                    else if ((amountHoursCraneIntens > 0.0) && (amountHoursCraneIntens < 4.0)) {
-                        Product hoursCraneIntenseIndustry = productService.getWorkHoursCraneIntense().get();
-                        hoursCraneIntenseIndustry.setSelectedAmount(4.0);
-                        hoursCraneIntenseIndustry.setTotalPrice(4.0 * hoursCraneIntenseIndustry.getSellPrice());
-                        hoursCraneIntenseIndustry.setTeamNumber(0);
-                        hoursCraneIntenseIndustry.setBTravel(true);
-                        hoursCraneIntenseIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        allProducts.add(hoursCraneIntenseIndustry);
-                    }
-                    if (amountForfait > 0) {
-                        Product hoursCraneForfaitIndustry = productService.getWorkHoursCraneForfait().get();
-                        hoursCraneForfaitIndustry.setSelectedAmount(Double.valueOf(amountForfait));
-                        hoursCraneForfaitIndustry.setTotalPrice(amountForfait * hoursCraneForfaitIndustry.getSellPrice());
-                        hoursCraneForfaitIndustry.setTeamNumber(0);
-                        hoursCraneForfaitIndustry.setBTravel(true);
-                        hoursCraneForfaitIndustry.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        allProducts.add(hoursCraneForfaitIndustry);
-                    }
-                }
-
-                //add roadTax / Tunneltax to workorder
-
-                Double totalTax = 0.0;
-                Double totalTunnelTax = 0.0;
-
-                for (WorkOrderHeader workOrderHeader : workOrder.getWorkOrderHeaderList()) {
-                    Double roadTax = 0.0;
-                    Double tunnelTax = 0.0;
-                    if ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.VAN))) {
-                        if (workOrderHeader.getRoadTax() != null) {
-                            roadTax = workOrderHeader.getRoadTax();
-                        } else {
-                            roadTax = 0.0;
-                        }
-                        if (workOrderHeader.getTunnelTax() != null) {
-                            tunnelTax = workOrderHeader.getTunnelTax();
-                        } else {
-                            tunnelTax = 0.0;
-                        }
-                    }
-                    if ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.ATEGO))) {
-
-                        if (workOrderHeader.getRoadTax() != null) {
-                            if ((workAddress.getRoadTaxAtego() != null) && (workAddress.getRoadTaxAtego() > workOrderHeader.getRoadTax())) {
-                                roadTax = workAddress.getRoadTaxAtego();
-                            } else {
-                                roadTax = workOrderHeader.getRoadTax();
-                            }
-                        } else {
-                            roadTax = Optional.ofNullable(workAddress.getRoadTaxAtego())
-                                    .orElse(0.0);
-                        }
-                        if (workOrderHeader.getTunnelTax() != null) {
-                            tunnelTax = workOrderHeader.getTunnelTax();
-                        } else {
-                            tunnelTax = 0.0;
-                        }
-                    }
-                    if ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_TRAILER))) {
-                        if (workOrderHeader.getRoadTax() != null) {
-                            if ((workAddress.getRoadTaxActros() != null) && (workAddress.getRoadTaxActros() > workOrderHeader.getRoadTax())) {
-                                roadTax = workAddress.getRoadTaxActros();
-                            } else {
-                                roadTax = workOrderHeader.getRoadTax();
-                            }
-                        } else {
-                            roadTax = Optional.ofNullable(workAddress.getRoadTaxActros())
-                                    .orElse(0.0);
-                        }
-                        if (workOrderHeader.getTunnelTax() != null) {
-                            tunnelTax = workOrderHeader.getTunnelTax();
-                        } else {
-                            tunnelTax = 0.0;
-                        }
-                    }
-                    if ((workOrderHeader.getFleet() != null) && (workOrderHeader.getFleet().equals(Fleet.TRUCK_CRANE))) {
-                        if (workOrderHeader.getRoadTax() != null) {
-                            if ((workAddress.getRoadTaxArocs() != null) && (workAddress.getRoadTaxArocs() > workOrderHeader.getRoadTax())) {
-                                roadTax = workAddress.getRoadTaxArocs();
-                            } else {
-                                roadTax = workOrderHeader.getRoadTax();
-                            }
-                        } else {
-                            roadTax = Optional.ofNullable(workAddress.getRoadTaxArocs())
-                                    .orElse(0.0);
-                        }
-                        if (workOrderHeader.getTunnelTax() != null) {
-                            tunnelTax = workOrderHeader.getTunnelTax();
-                        } else {
-                            tunnelTax = 0.0;
-                        }
-                    }
-                    totalTax += roadTax;
-                    totalTunnelTax += tunnelTax;
-                }
-
-
-                if (totalTax > 0.0) {
-                    Product roadTaxProduct = new Product();
-                    roadTaxProduct.setSelectedAmount(1.0);
-                    roadTaxProduct.setInternalName("Wegentaks");
-                    roadTaxProduct.setSellPrice(totalTax);
-                    roadTaxProduct.setTotalPrice(1.0 * totalTax);
-                    roadTaxProduct.setBTravel(true);
-                    roadTaxProduct.setVat(VAT.EENENTWINTIG);
-                    roadTaxProduct.setTeamNumber(0);
-                    roadTaxProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                    allProducts.add(roadTaxProduct);
-                }
-
-                if (totalTunnelTax > 0.0) {
-                    Product tunnelTaxProduct = new Product();
-                    tunnelTaxProduct.setSelectedAmount(1.0);
-                    tunnelTaxProduct.setInternalName("tunneltaks");
-                    tunnelTaxProduct.setSellPrice(totalTunnelTax);
-                    tunnelTaxProduct.setTotalPrice(1.0 * totalTunnelTax);
-                    tunnelTaxProduct.setBTravel(true);
-                    tunnelTaxProduct.setVat(VAT.EENENTWINTIG);
-                    tunnelTaxProduct.setTeamNumber(0);
-                    tunnelTaxProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                    allProducts.add(tunnelTaxProduct);
-                }
-
-                Product emptyProduct1 = new Product();
-                emptyProduct1.setTeamNumber(0);
-                emptyProduct1.setBComment(true);
-                emptyProduct1.setInternalName("");
-                emptyProduct1.setDate(workOrder.getWorkDateTime().toLocalDate());
-                allProducts.add(emptyProduct1);
-
-                invoice.setProductList(allProducts);
-
-                checkIfToolsHoursAreSubtractedFromWorkOrder(invoice);
-            }
-        }
-        return invoice;
-    }
-
-    private Double getSellPriceOfWorkHour(List<Customer> customers, WorkType workType, WorkLocation workLocation) {
-        if(customers.get(0).getBAgro()){
-            if(workType == WorkType.CENTRIFUGE){
-                Optional<Product> first = productService.getAllProductsByCategory("Agro", "Werkuren").get().stream().filter(item -> item.getInternalName().contains("Werkuren - centrifuge")).findFirst();
-                if(first.isPresent()){
-                    return first.get().getSellPrice();
-                }
-                return 0.0;
-            }
-            if(workType == WorkType.PROGRAMMATIC){
-                Optional<Product> first = productService.getAllProductsByCategory("Agro", "Werkuren").get().stream().filter(item -> item.getInternalName().contains("Werkuren - programmatie")).findFirst();
-                if(first.isPresent()){
-                    return first.get().getSellPrice();
-                }
-                return 0.0;
-            }
-            if(workType == WorkType.GENERAL){
-                Optional<Product> first = productService.getAllProductsByCategory("Agro", "Werkuren").get().stream().filter(item -> item.getInternalName().contains("Werkuren - verplaatsing")).findFirst();
-                if(first.isPresent()){
-                    return first.get().getSellPrice();
-                }
-                return 0.0;
-            }
-        }
-        if(customers.get(1).getBIndustry()){
-            if(workType == WorkType.CENTRIFUGE){
-                Optional<Product> first = productService.getAllProductsByCategory("Industrie", "Werkuren").get().stream().filter(item -> item.getInternalName().contains("Werkuren - centrifuge")).findFirst();
-                if(first.isPresent()){
-                    return first.get().getSellPrice();
-                }
-                return 0.0;
-            }
-            if(workType == WorkType.PROGRAMMATIC){
-                Optional<Product> first = productService.getAllProductsByCategory("Industrie", "Werkuren").get().stream().filter(item -> item.getInternalName().contains("Werkuren - programmatie")).findFirst();
-                if(first.isPresent()){
-                    return first.get().getSellPrice();
-                }
-                return 0.0;
-            }
-            if(workType == WorkType.GENERAL){
-                Optional<Product> first = productService.getAllProductsByCategory("Industrie", "Werkuren").get().stream().filter(item -> item.getInternalName().contains("Werkuren - verplaatsing")).findFirst();
-                if(first.isPresent()){
-                    return first.get().getSellPrice();
-                }
-                return 0.0;
-            }
-        }
-        return 0.0;
-    }
-
-
-    public String generateInvoicePDF(Invoice invoice){
+        List<String>linkList = new ArrayList<>();
 
         JasperReport jasperReport = null;
         JasperPrint jasperPrint = null;
@@ -1711,7 +1713,7 @@ public class InvoiceServices {
         parameters.put( "ItemDataSource", productImplementation);
 
         Double totalPriceInvoice = invoice.getProductList().stream()
-                .filter(product -> product.getTotalPrice() != null)
+                .filter(product -> ((product.getMergedProduct() == null) || (product.getMergedProduct() == false)) && (product.getTotalPrice() != null))
                 .mapToDouble(Product::getTotalPrice)
                 .sum();
 
@@ -1719,7 +1721,7 @@ public class InvoiceServices {
 
         if(invoice.getCustomer().getVatNumber().contains("BE")){
             double btwBedrag = invoice.getProductList().stream()
-                    .filter(product -> product.getTotalPrice() != null)
+                    .filter(product -> ((product.getMergedProduct() == null) || (product.getMergedProduct() == false)) && (product.getTotalPrice() != null))
                     .mapToDouble(x -> (x.getTotalPrice() * x.getVat().getValue()) / 100)
                     .sum();
 
@@ -1768,8 +1770,17 @@ public class InvoiceServices {
             System.out.println(e.getMessage());
         }
 
-        String formatted = String.valueOf(invoice.getInvoiceNumber()).substring(0, 2) + "-" + String.valueOf(invoice.getInvoiceNumber()).substring(2);
-        String exportName = rootFolder + ""+ formatted+".pdf";
+        String formatted;
+        String exportName;
+
+        if((invoice.getBFinalInvoice() != null) && (invoice.getBFinalInvoice() == true)){
+            formatted = String.valueOf(invoice.getFinalInvoiceNumber()).substring(0, 2) + "-" + String.valueOf(invoice.getFinalInvoiceNumber()).substring(2);
+            exportName = rootFolder + ""+ formatted+".pdf";
+        }
+        else{
+            formatted = String.valueOf(invoice.getInvoiceNumber()).substring(0, 2) + "-" + String.valueOf(invoice.getInvoiceNumber()).substring(2);
+            exportName = rootFolder + ""+ formatted+".pdf";
+        }
 
         try {
             invoiceBytes = JasperExportManager.exportReportToPdf(jasperPrint);
@@ -1782,6 +1793,7 @@ public class InvoiceServices {
 
 
         //now show it in a new tab in the browser
+        linkList.add(exportName);
         pdfController.setPdfNaam(""+ formatted+".pdf");
 
         UI.getCurrent().getPage().open("/pdf", "_blank");
@@ -1825,6 +1837,8 @@ public class InvoiceServices {
                         attachementBytes
                 );
 
+                linkList.add(rootFolder + "all_attachments.pdf");
+
                 SimplePdfExporterConfiguration configuration =
                         new SimplePdfExporterConfiguration();
 
@@ -1846,7 +1860,7 @@ public class InvoiceServices {
         else{
             attachementBytes = null;
         }
-        return "invoice_"+ invoice.getInvoiceNumber()+".pdf";
+        return linkList;
     }
 
     private void generateAttachement(LocalDate datum, Invoice invoice, List<Product> attachments) {
@@ -2123,7 +2137,7 @@ public class InvoiceServices {
                 item.setTotalPrice(roundedTotalPrice);
 
             }
-            Double totalNet = invoice.getProductList().stream()
+            Double totalNet = invoice.getProductList().stream().filter(x -> (x.getMergedProduct() == null) || (x.getMergedProduct() == false))
                     .mapToDouble(item -> item.getTotalPrice())
                     .sum();
 
@@ -2143,6 +2157,7 @@ public class InvoiceServices {
 
             }
             Double totalTax = invoice.getProductList().stream()
+                    .filter(x -> (x.getMergedProduct() == null) || (x.getMergedProduct() == false))
                     .mapToDouble(x -> (x.getTotalPrice() * x.getVat().getValue())/100)
                     .sum();
 
@@ -2194,10 +2209,15 @@ public class InvoiceServices {
             for (Invoice invoice : invoiceList) {
                 if ((invoice != null) && (invoice.getPaymentList() != null) && (invoice.getPaymentList().size() > 0)) {
                     Double payed = invoice.getPaymentList().stream().map(item -> item.getPaymentAmount()).reduce(0.0, Double::sum);
-                    totalToBePayed = totalToBePayed + calcTotalNetFromInvoice(invoice).get()+ calcTotalTaxFromInvoice(invoice).get() - payed;
+                    totalToBePayed +=
+                            calcTotalNetFromInvoice(invoice).orElse(0.0)
+                                    + calcTotalTaxFromInvoice(invoice).orElse(0.0)
+                                    - payed;
                 }
                 else{
-                    totalToBePayed = totalToBePayed + calcTotalNetFromInvoice(invoice).get()+ calcTotalTaxFromInvoice(invoice).get();
+                    totalToBePayed +=
+                            calcTotalNetFromInvoice(invoice).orElse(0.0)
+                                    + calcTotalTaxFromInvoice(invoice).orElse(0.0);
                 }
             }
             return Optional.of(totalToBePayed);
@@ -2332,7 +2352,7 @@ public class InvoiceServices {
             selectedInvoice.getProductList().stream().filter(x -> (x.getPositionNumber() != null) && (x.getPositionNumber().matches("0"))).collect(Collectors.toList()).forEach(x -> {
                 Optional<List<Customer>> customerByWorkAddress = customerService.getCustomerByWorkAddress(selectedInvoice.getWorkAddress());
                 if(customerByWorkAddress.isPresent() && customerByWorkAddress.get().size() > 0){
-                    customerByWorkAddress.get().getFirst().getAddresses().stream().filter(address -> (address.getAddressName() != null) && (address.getAddressName().matches(selectedInvoice.getWorkAddress().getAddressName()))).collect(Collectors.toList()).forEach(address -> {
+                    customerByWorkAddress.get().getFirst().getAddresses().stream().filter(address -> (address.getAddressName() != null) && (address.getAddressName().matches(selectedInvoice.getWorkAddress().getAddressName())) && (address.getInvoiceAddress() != null) && (address.getInvoiceAddress() == false)) .collect(Collectors.toList()).forEach(address -> {
                         for(int i = 0 ; i < x.getSelectedAmount().intValue(); i++){
                             Device device = new Device();
                             device.setDeviceName(x.getInternalName());

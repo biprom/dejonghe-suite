@@ -149,8 +149,8 @@ public class SetViewSimple extends Div {
             return folderName;
         }).setHeader("Map").setResizable(true).setFlexGrow(2);
         productGrid.addColumn(item -> {
-            if((item.getSetList() != null) && (item.getSetList().size() > 0)){
-                Optional<Product> optProduct = item.getSetList().stream().filter(element -> element.getProductCode().matches(selectedProduct.getProductCode())).findFirst();
+            if((selectedProduct.getSetList() != null) && (selectedProduct.getSetList().size() > 0)){
+                Optional<Product> optProduct = selectedProduct.getSetList().stream().filter(element -> element.getProductCode().matches(item.getProductCode())).findFirst();
                 if(optProduct.isPresent()) {
                     return optProduct.get().getSelectedAmount();
                 }

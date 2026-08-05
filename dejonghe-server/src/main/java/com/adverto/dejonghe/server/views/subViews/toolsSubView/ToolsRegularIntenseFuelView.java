@@ -51,7 +51,8 @@ public class ToolsRegularIntenseFuelView extends VerticalLayout {
         this.setAlignItems(Alignment.CENTER);
         radioGroup = new RadioButtonGroup<>();
         radioGroup.addThemeVariants(RadioGroupVariant.LUMO_VERTICAL);
-        radioGroup.setItems(ToolsLabor.REGULAR.getDiscription(),ToolsLabor.INTENSE.getDiscription());
+        radioGroup.setItems(ToolsLabor.INTENSE.getDiscription());
+        radioGroup.setValue(ToolsLabor.INTENSE.getDiscription());
         radioGroup.addValueChangeListener(event -> {
             selectedTool.setAbbreviation(selectedTool.getAbbreviation().replace("IN",""));
             selectedTool.setAbbreviation(selectedTool.getAbbreviation().replace("AL",""));

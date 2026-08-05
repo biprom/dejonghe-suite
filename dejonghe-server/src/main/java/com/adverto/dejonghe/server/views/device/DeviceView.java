@@ -161,7 +161,7 @@ public class DeviceView extends VerticalLayout implements BeforeEnterObserver {
             }
             else{
                 selectedCustomer = optCustomer.get().get(0);
-                selectedWorkAddress = selectedCustomer.getAddresses().stream().filter(item -> (item.getAddressName() != null) && (item.getAddressName().toLowerCase().matches(workAddressName.toLowerCase()))).findFirst().orElse(null);
+                selectedWorkAddress = selectedCustomer.getAddresses().stream().filter(item -> (item.getAddressName() != null) && (item.getAddressName().toLowerCase().matches(workAddressName.toLowerCase())) && ((item.getInvoiceAddress() == null)||(item.getInvoiceAddress() == false))).findFirst().orElse(null);
                 if(selectedWorkAddress.getCoupledDeviceList() == null){
                     selectedWorkAddress.setCoupledDeviceList(new ArrayList<>());
                     loadData();

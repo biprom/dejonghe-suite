@@ -1,6 +1,8 @@
 package com.adverto.dejonghe.server.views.subViews;
 
 import com.adverto.dejonghe.common.entities.customers.Address;
+import com.adverto.dejonghe.common.services.WorkOrderPdfServices;
+import com.adverto.dejonghe.server.Controllers.PdfController;
 import com.adverto.dejonghe.server.customEvents.GetSelectedWorkOrderEvent;
 import com.adverto.dejonghe.common.dbservices.WorkOrderService;
 import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrder;
@@ -8,11 +10,13 @@ import com.adverto.dejonghe.common.entities.enums.employee.UserFunction;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkOrderStatus;
 import com.adverto.dejonghe.server.services.workorder.WorkorderViewState;
 import com.vaadin.flow.component.Text;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridSortOrder;
 import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.grid.HeaderRow;
+import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
@@ -40,8 +44,10 @@ import static com.vaadin.flow.component.button.ButtonVariant.LUMO_TERTIARY_INLIN
 public class CurrentWorkOrdersSubView extends VerticalLayout {
 
     WorkOrderService workOrderService;
+    WorkOrderPdfServices workOrderPdfServices;
     ApplicationEventPublisher eventPublisher;
     WorkorderViewState workorderViewState;
+    PdfController pdfController;
 
     TreeGrid<WorkOrder> pendingWorkOrdersGrid;
     List<WorkOrder>selectedWorkOrders;
@@ -51,6 +57,7 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
     TextField filterSubject;
     TextField filterName;
     TextField filterResponsible;
+    Button clearFilterButton;
 
     WorkOrder selectedWorkOrder;
     List<WorkOrder>workOrderBundleList = new ArrayList<>();
@@ -63,10 +70,14 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
     @Autowired
     public CurrentWorkOrdersSubView(WorkOrderService workOrderService,
                                     ApplicationEventPublisher eventPublisher,
-                                    WorkorderViewState workorderViewState) {
+                                    WorkorderViewState workorderViewState,
+                                    WorkOrderPdfServices workOrderPdfServices,
+                                    PdfController pdfController) {
         this.workOrderService = workOrderService;
         this.eventPublisher = eventPublisher;
         this.workorderViewState = workorderViewState;
+        this.workOrderPdfServices = workOrderPdfServices;
+        this.pdfController = pdfController;
 
         setUpfilters();
         createReportDelete();
@@ -78,6 +89,9 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
     }
 
     private void setUpfilters() {
+
+        clearFilterButton = new Button(VaadinIcon.CLOSE.create());
+
         filterSubject = new TextField();
         filterSubject.setPlaceholder("Commentaar");
         filterSubject.setWidth("100%");
@@ -137,8 +151,13 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
             } else {
                 addItemsToPendingWorkOrderGrid(selectedWorkOrders);
             }
-
             pendingWorkOrdersGrid.getDataProvider().refreshAll();
+        });
+
+        clearFilterButton.addClickListener(e -> {
+            filterName.setValue("");
+            filterResponsible.setValue("");
+            filterSubject.setValue("");
         });
     }
 
@@ -163,11 +182,21 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
                 .setSortable(true)
                 .setComparator(workorder -> workorder.getWorkDateTime().toLocalDate())
                 .setFlexGrow(1);
-        Grid.Column<WorkOrder> columnSubject = pendingWorkOrdersGrid.addColumn(workOrder -> {
-            return getWorkOrderDiscriptions(workOrder);
-        }).setHeader("Omschrijving").setFlexGrow(7);
+        Grid.Column<WorkOrder> columnSubject = pendingWorkOrdersGrid.addComponentColumn(workOrder -> {
+            Span span = new Span(getWorkOrderDiscriptions(workOrder));
+            span.getElement().setProperty("title", getWorkOrderDiscriptions(workOrder));
+            span.getStyle()
+                    .set("white-space", "nowrap")
+                    .set("overflow", "hidden")
+                    .set("text-overflow", "ellipsis");
+            return span;
+        }).setHeader("Omschrijving");
+        columnSubject.setFlexGrow(7);
+        columnSubject.setClassNameGenerator(item -> "ellipsis-column");
         Grid.Column<WorkOrder> columnResponsible = pendingWorkOrdersGrid.addColumn(workOrder -> getActiveMasterEmployees(workOrder)).setHeader("Verantwoordelijke").setFlexGrow(1);
-
+        pendingWorkOrdersGrid.addComponentColumn(workOrder -> {
+            return getOpenPdfIcon(workOrder);
+        }).setHeader("PDF").setFlexGrow(0);
 
         pendingWorkOrdersGrid.addItemClickListener(event -> {
 
@@ -210,11 +239,25 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
 
         pendingWorkOrdersGrid.sort(GridSortOrder.desc(dateColumn).build());
         headerRow = pendingWorkOrdersGrid.appendHeaderRow();
-        headerRow.getCell(columnAddress).setComponent(filterName);
+        headerRow.getCell(columnAddress).setComponent(new HorizontalLayout(clearFilterButton,filterName));
         headerRow.getCell(columnSubject).setComponent(filterSubject);
         headerRow.getCell(columnResponsible).setComponent(filterResponsible);
 
         return pendingWorkOrdersGrid;
+    }
+
+    private Icon getOpenPdfIcon(WorkOrder workOrder) {
+        Icon pdfIcon = new Icon(VaadinIcon.FILE_FONT);
+        pdfIcon.addClickListener(event -> {
+            String url = workOrderPdfServices.generateWorkOrderPDF(workOrder);
+            //now show it in a new tab in the browser
+            pdfController.setPdfNaam(url);
+
+            //to open tab with pdf
+            UI.getCurrent().getPage().open("/pdf", "_blank");
+
+        });
+        return pdfIcon;
     }
 
     private String getWorkOrderDiscriptions(WorkOrder workOrder) {

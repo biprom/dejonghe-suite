@@ -110,21 +110,6 @@ public class NewArticleView extends Div {
         sellMarginIndustryTextField.setWidthFull();
         nameTextField.setWidthFull();
 
-        sellMarginTextField.addValueChangeListener(event -> {
-//            if(event.isFromClient()){
-//                editor.save();
-//                productServices.calcSellPriceAgroFromPurchasePriceAndMargin(editor.getItem());
-//                productGrid.getDataProvider().refreshAll();
-//            }
-        });
-
-        sellMarginIndustryTextField.addValueChangeListener(event -> {
-//            if(event.isFromClient()){
-//                editor.save();
-//                productServices.calcSellPriceIndustryFromPurchasePriceAndMarginIndustry(editor.getItem());
-//                productGrid.getDataProvider().refreshAll();
-//            }
-        });
 
         binder.forField(nameTextField)
                 //.asRequired("Mag niet leeg zijn")

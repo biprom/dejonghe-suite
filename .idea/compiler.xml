@@ -7,8 +7,9 @@
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
         <module name="dejonghe-server" />
+        <module name="tabletIntern" />
+        <module name="tabletExtern" />
         <module name="dejonghe-common" />
-        <module name="tabletDemo" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
@@ -20,7 +21,8 @@
       <module name="dejonghe-common" options="-parameters" />
       <module name="dejonghe-server" options="-parameters" />
       <module name="dejonghe-tablet" options="-parameters" />
-      <module name="tabletDemo" options="-parameters" />
+      <module name="tabletExtern" options="-parameters" />
+      <module name="tabletIntern" options="-parameters" />
     </option>
   </component>
 </project>

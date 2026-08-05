@@ -5,6 +5,7 @@ import jakarta.persistence.Id;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.annotation.Transient;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.io.Serializable;
@@ -70,6 +71,16 @@ public class Product implements Serializable {
     List<String>pdfList;
     List<ProductLink>linkDocumentList;
     boolean boldMode = false;
+    @Transient
     boolean selectedMode = false;
+    boolean noRecentPriceApproved = false;
+    @Transient
+    boolean noRecentPrice = false;
+    @Transient
+    double recentPurchasePrice;
+    @Transient
+    double recentIndustryPrice;
+    @Transient
+    double recentAgroPrice;
 
 }

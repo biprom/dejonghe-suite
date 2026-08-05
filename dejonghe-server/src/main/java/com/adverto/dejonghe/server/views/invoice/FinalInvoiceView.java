@@ -10,6 +10,7 @@ import com.vaadin.flow.component.ComponentEventListener;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.contextmenu.MenuItem;
+import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.menubar.MenuBar;
 import com.vaadin.flow.component.menubar.MenuBarVariant;
 import com.vaadin.flow.component.notification.Notification;
@@ -91,6 +92,13 @@ public class FinalInvoiceView extends VerticalLayout implements BeforeEnterObser
         actionBarLayout.setAlignItems(FlexComponent.Alignment.CENTER);
         actionBarLayout.setPadding(true);
 
+        //add Back button
+        Button backButton = new Button(VaadinIcon.ARROW_LEFT.create());
+        backButton.addClassName("subNav-new");
+        backButton.addClickListener(e -> {
+            UI.getCurrent().getPage().getHistory().back();
+        });
+
         //add New Button
         Button newButton = new Button("+");
         newButton.addClassName("subNav-new");
@@ -114,7 +122,7 @@ public class FinalInvoiceView extends VerticalLayout implements BeforeEnterObser
         MenuItem actie = actionBar.addItem("Actie".toUpperCase());
         actie.getElement().getClassList().add("menu-as-button");
         actie.getSubMenu().addItem("Verwijder geselecteerde factuur",getRemoveOrderClickEvent());
-        actionBarLayout.add(newButton,actionBar);
+        actionBarLayout.add(backButton,newButton,actionBar);
         return actionBarLayout;
     }
 

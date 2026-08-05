@@ -2,7 +2,7 @@ package com.adverto.dejonghe.common.entities.enums.workorder;
 
 public enum Tools {
     PERSONENKOOI (1,1,  WorkLocation.ON_THE_MOVE,"Personenkooi",ToolsPopUpType.TOOLS_VIEW_OK, false, "OPVER-pk"),
-    GRIJPBAK (1,2,  WorkLocation.ON_THE_MOVE,"Grijpbak",ToolsPopUpType.TOOLS_VIEW_REGULAR_INTENSE,  false, "OPVER-gb-"),
+    GRIJPBAK (1,2,  WorkLocation.ON_THE_MOVE,"Grijpbak",ToolsPopUpType.TOOLS_VIEW_OK,  false, "OPVER-gb-"),
     MAX_TRAILER (1,3,  WorkLocation.ON_THE_MOVE,"MAX- trailer",ToolsPopUpType.TOOLS_VIEW_OK,  false, "OPVER-diepl"),
     LINTZAAGMACHINE (1,4,  WorkLocation.ON_THE_MOVE,"Mobiele lintzaagmachine",ToolsPopUpType.TOOLS_VIEW_OK, false, "OPVER-lzm"),
 
@@ -14,8 +14,8 @@ public enum Tools {
     GRAAFKRAAN_1700(3,1,  WorkLocation.ON_THE_MOVE,"Graafkraan 1.7 ton",ToolsPopUpType.TOOLS_VIEW_REGULAR_INTENSE_FUEL,  false,"OPVER-gk17-"),
     GRAAFKRAAN_6000 (3,2,  WorkLocation.ON_THE_MOVE,"Graafkraan 6 ton",ToolsPopUpType.TOOLS_VIEW_FUEL,   false,"OPVER-gk60"),
     GRAAFKRAAN14000 (3,3,  WorkLocation.ON_THE_MOVE,"Graafkraan 14 ton",ToolsPopUpType.TOOLS_VIEW_FUEL, false,"OPVER-gk14"),
-    BREEKHAMER17TON (3,4,  WorkLocation.ON_THE_MOVE,"Breekhamer 1.7 ton",ToolsPopUpType.TOOLS_VIEW_REGULAR_INTENSE, false,"OPVER-bh17-"),
-    BREEKHAMER60TON (3,5,  WorkLocation.ON_THE_MOVE,"Breekhamer 6.0 ton",ToolsPopUpType.TOOLS_VIEW_REGULAR_INTENSE,  false,"OPVER-bh60-"),
+    BREEKHAMER17TON (3,4,  WorkLocation.ON_THE_MOVE,"Breekhamer 1.7 ton",ToolsPopUpType.TOOLS_VIEW_OK, false,"OPVER-bh17-IN"),
+    BREEKHAMER60TON (3,5,  WorkLocation.ON_THE_MOVE,"Breekhamer 6.0 ton",ToolsPopUpType.TOOLS_VIEW_OK,  false,"OPVER-bh60-IN"),
 
     BROMMER (4,1,  WorkLocation.ON_THE_MOVE,"Brommer",ToolsPopUpType.TOOLS_VIEW_THICK_RUNNING_METER, false,"OPVER-brom"),
     BETONZAAGMACHINE (4,2,  WorkLocation.ON_THE_MOVE,"Betonzaagmachine",ToolsPopUpType.TOOLS_VIEW_THICK_RUNNING_METER,false,"OPVER-bzm600"),

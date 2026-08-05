@@ -25,4 +25,5 @@ public class Employee {
     private String alertMessage;
     private LocalDate birthDate;
     private LocalDate dateOfService;
+    private Integer priority = 0;
 }

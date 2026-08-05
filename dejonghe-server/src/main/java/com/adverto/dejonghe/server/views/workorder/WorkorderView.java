@@ -217,6 +217,8 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
     double proposalAmountHoursCrane;
 
+    private final Set<Integer> activeTeams = new HashSet<>();
+
 
     public WorkorderView(ProductService productService,
                          CustomerService customerService,
@@ -634,20 +636,28 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 timeStopPicker.setMin(timeStartPicker.getValue());
             });
             timeStopPicker.addValueChangeListener(event -> {
-                try {
-                    item.setTimeStop(timeStopPicker.getValue());
-                    //timeDownPicker.setMin(timeStopPicker.getValue());
-                    workOrderTimeGrid.getDataProvider().refreshAll();
-                    selectedWorkOrder.getWorkOrderHeaderList().get(selectedTeam-1).setWorkOrderTimeList(selectedWorkOrderTimes);
-                    saveSelectedWorkOrder();
-                } catch (ValidationException e) {
-                    throw new RuntimeException(e);
+                if (timeStopPicker.getValue() != null
+                        && !timeStopPicker.getValue().isBefore(timeStartPicker.getValue())) {
+                    try {
+                        item.setTimeStop(timeStopPicker.getValue());
+                        //timeDownPicker.setMin(timeStopPicker.getValue());
+                        workOrderTimeGrid.getDataProvider().refreshAll();
+                        selectedWorkOrder.getWorkOrderHeaderList().get(selectedTeam-1).setWorkOrderTimeList(selectedWorkOrderTimes);
+                        saveSelectedWorkOrder();
+                    } catch (ValidationException e) {
+                        throw new RuntimeException(e);
+                    }
+                    try {
+                        workOrderBinder.writeBean(selectedWorkOrder);
+                    } catch (ValidationException e) {
+                        throw new RuntimeException(e);
+                    }
                 }
-                try {
-                    workOrderBinder.writeBean(selectedWorkOrder);
-                } catch (ValidationException e) {
-                    throw new RuntimeException(e);
+                else{
+                    timeStopPicker.setValue(timeStartPicker.getValue());
+                    Notification.show("De stop tijd mag niet voor de start tijd liggen!").addThemeVariants(NotificationVariant.LUMO_ERROR);
                 }
+
             });
             return timeStopPicker;
         }).setHeader("Stop werk");
@@ -662,27 +672,35 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 timeDownPicker.setMin(timeStopPicker.getValue());
             });
             timeDownPicker.addValueChangeListener(event -> {
-                try {
-                    item.setTimeDown(timeDownPicker.getValue());
-                    selectedWorkOrder.getWorkOrderHeaderList().get(selectedTeam-1).setWorkOrderTimeList(selectedWorkOrderTimes);
-                    try{
-                        Duration duration = Duration.between(item.getTimeUp(), item.getTimeDown());
-                        long hours = duration.toHours();
-                        long minutes = duration.toMinutes() % 60; // Minuten zonder de uren
-                        proposalAmountHoursCrane = hours + minutes / 60.0;
-                        tfFleetHours.setPlaceholder(String.valueOf(proposalAmountHoursCrane));
+                if (timeDownPicker.getValue() != null
+                        && !timeDownPicker.getValue().isBefore(timeUpPicker.getValue())) {
+                    try {
+                        item.setTimeDown(timeDownPicker.getValue());
+                        selectedWorkOrder.getWorkOrderHeaderList().get(selectedTeam-1).setWorkOrderTimeList(selectedWorkOrderTimes);
+                        try{
+                            Duration duration = Duration.between(item.getTimeUp(), item.getTimeDown());
+                            long hours = duration.toHours();
+                            long minutes = duration.toMinutes() % 60; // Minuten zonder de uren
+                            proposalAmountHoursCrane = hours + minutes / 60.0;
+                            tfFleetHours.setPlaceholder(String.valueOf(proposalAmountHoursCrane));
+                        }
+                        catch (Exception e){
+                        }
+                        saveSelectedWorkOrder();
+                    } catch (ValidationException e) {
+                        throw new RuntimeException(e);
                     }
-                    catch (Exception e){
+                    try {
+                        workOrderBinder.writeBean(selectedWorkOrder);
+                    } catch (ValidationException e) {
+                        throw new RuntimeException(e);
                     }
-                    saveSelectedWorkOrder();
-                } catch (ValidationException e) {
-                    throw new RuntimeException(e);
                 }
-                try {
-                    workOrderBinder.writeBean(selectedWorkOrder);
-                } catch (ValidationException e) {
-                    throw new RuntimeException(e);
+                else{
+                    timeDownPicker.setValue(timeUpPicker.getValue());
+                    Notification.show("De terug tijd mag niet voor de vertrek tijd liggen!").addThemeVariants(NotificationVariant.LUMO_ERROR);
                 }
+
             });
             return timeDownPicker;
         }).setHeader("Terug");
@@ -823,6 +841,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         removeButton.addClickListener(click -> {
             selectedBowlEntities.remove(selectedBowlEntity);
             bowlGrid.getDataProvider().refreshAll();
+            try {
+                saveSelectedWorkOrder();
+            } catch (ValidationException e) {
+                throw new RuntimeException(e);
+            }
             Notification.show("Bowl verwijderen!");
             removeBowlDialog.close();
         });
@@ -836,7 +859,12 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         removeButton.addClickListener(click -> {
             selectedWorkOrderTimes.remove(selectedWorkOrderTime);
             workOrderTimeGrid.getDataProvider().refreshAll();
-            Notification.show("Een verwijderen!");
+            try {
+                saveSelectedWorkOrder();
+            } catch (ValidationException e) {
+                throw new RuntimeException(e);
+            }
+            Notification.show("Rij verwijderen!");
             removeWorkOrderHourDialog.close();
         });
         removeButton.addThemeVariants(ButtonVariant.LUMO_ERROR);
@@ -1131,11 +1159,23 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 .asRequired("Gelieve een verantwoordelijke te selecteren!")
                 .bind(WorkOrder::getMasterEmployeeTeam1, WorkOrder::setMasterEmployeeTeam1);
         workOrderBinder.forField(cbMasterEmployee2)
-                .bind(WorkOrder::getMasterEmployeeTeam2, WorkOrder::setMasterEmployeeTeam2);
+                .withValidator(value ->
+                                !activeTeams.contains(2) || value != null,
+                        "Gelieve een verantwoordelijke voor team 2 te selecteren.")
+                .bind(WorkOrder::getMasterEmployeeTeam2,
+                        WorkOrder::setMasterEmployeeTeam2);
         workOrderBinder.forField(cbMasterEmployee3)
-                .bind(WorkOrder::getMasterEmployeeTeam3, WorkOrder::setMasterEmployeeTeam3);
+                .withValidator(value ->
+                                !activeTeams.contains(3) || value != null,
+                        "Gelieve een verantwoordelijke voor team 3 te selecteren.")
+                .bind(WorkOrder::getMasterEmployeeTeam3,
+                        WorkOrder::setMasterEmployeeTeam3);
         workOrderBinder.forField(cbMasterEmployee4)
-                .bind(WorkOrder::getMasterEmployeeTeam4, WorkOrder::setMasterEmployeeTeam4);
+                .withValidator(value ->
+                                !activeTeams.contains(4) || value != null,
+                        "Gelieve een verantwoordelijke voor team 4 te selecteren.")
+                .bind(WorkOrder::getMasterEmployeeTeam4,
+                        WorkOrder::setMasterEmployeeTeam4);
         workOrderBinder.forField(cbExtraEmployees1)
                 .bind(WorkOrder::getExtraEmployeesTeam1, WorkOrder::setExtraEmployeesTeam1);
         workOrderBinder.forField(cbExtraEmployees2)
@@ -1478,6 +1518,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             });
 
             tfFleetHours.setWidth("50%");
+            tfFleetHours.setSuffixComponent(new Span("werkuren"));
             tfFleetHours.setPlaceholder("Aantal uren kraan");
             horizontalLayout2.add(fleetWorkTypeComboBox, tfFleetHours);
 
@@ -1557,13 +1598,29 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         });
 
         cbExtraEmployees1.setWidth("100%");
+
         Optional<List<Employee>> employees1 = employeeService.getAll();
         if(employees1.isPresent()){
+
+            List<Employee> sortedEmployees1 = employees1.get().stream()
+                    .sorted(
+                            Comparator.comparingInt(
+                                            (Employee e) -> e.getPriority() == 0
+                                                    ? Integer.MAX_VALUE
+                                                    : e.getPriority()
+                                    )
+                                    .thenComparing(
+                                            Employee::getFirstName,
+                                            String.CASE_INSENSITIVE_ORDER
+                                    )
+                    )
+                    .toList();
+
             cbMasterEmployee1.setPlaceholder("Team 1");
             cbMasterEmployee1.setClearButtonVisible(true);
-            cbMasterEmployee1.setItems(employees1.get());
+            cbMasterEmployee1.setItems(sortedEmployees1);
             cbMasterEmployee1.setItemLabelGenerator(item -> item.getFirstName()+ " " + item.getLastName());
-            cbExtraEmployees1.setItems(employees1.get());
+            cbExtraEmployees1.setItems(sortedEmployees1);
             cbExtraEmployees1.setItemLabelGenerator(item -> item.getAbbreviation());
         }
         else{
@@ -1595,11 +1652,26 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         cbExtraEmployees2.setWidth("100%");
         Optional<List<Employee>> employees2 = employeeService.getAll();
         if(employees2.isPresent()){
+
+            List<Employee> sortedEmployees2 = employees2.get().stream()
+                    .sorted(
+                            Comparator.comparingInt(
+                                            (Employee e) -> e.getPriority() == 0
+                                                    ? Integer.MAX_VALUE
+                                                    : e.getPriority()
+                                    )
+                                    .thenComparing(
+                                            Employee::getFirstName,
+                                            String.CASE_INSENSITIVE_ORDER
+                                    )
+                    )
+                    .toList();
+
             cbMasterEmployee2.setPlaceholder("Team 2");
-            cbMasterEmployee2.setItems(employees2.get());
+            cbMasterEmployee2.setItems(sortedEmployees2);
             cbMasterEmployee2.setClearButtonVisible(true);
             cbMasterEmployee2.setItemLabelGenerator(item -> item.getFirstName()+ " " + item.getLastName());
-            cbExtraEmployees2.setItems(employees2.get());
+            cbExtraEmployees2.setItems(sortedEmployees2);
             cbExtraEmployees2.setItemLabelGenerator(item -> item.getAbbreviation());
         }
         else{
@@ -1630,11 +1702,26 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         cbExtraEmployees3.setWidth("100%");
         Optional<List<Employee>> employees3 = employeeService.getAll();
         if(employees3.isPresent()){
+
+            List<Employee> sortedEmployees3 = employees3.get().stream()
+                    .sorted(
+                            Comparator.comparingInt(
+                                            (Employee e) -> e.getPriority() == 0
+                                                    ? Integer.MAX_VALUE
+                                                    : e.getPriority()
+                                    )
+                                    .thenComparing(
+                                            Employee::getFirstName,
+                                            String.CASE_INSENSITIVE_ORDER
+                                    )
+                    )
+                    .toList();
+
             cbMasterEmployee3.setPlaceholder("Team 3");
             cbMasterEmployee3.setClearButtonVisible(true);
-            cbMasterEmployee3.setItems(employees3.get());
+            cbMasterEmployee3.setItems(sortedEmployees3);
             cbMasterEmployee3.setItemLabelGenerator(item -> item.getFirstName()+ " " + item.getLastName());
-            cbExtraEmployees3.setItems(employees3.get());
+            cbExtraEmployees3.setItems(sortedEmployees3);
             cbExtraEmployees3.setItemLabelGenerator(item -> item.getAbbreviation());
         }
         else{
@@ -1663,11 +1750,26 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         cbExtraEmployees4.setWidth("100%");
         Optional<List<Employee>> employees4 = employeeService.getAll();
         if(employees4.isPresent()){
+
+            List<Employee> sortedEmployees4 = employees4.get().stream()
+                    .sorted(
+                            Comparator.comparingInt(
+                                            (Employee e) -> e.getPriority() == 0
+                                                    ? Integer.MAX_VALUE
+                                                    : e.getPriority()
+                                    )
+                                    .thenComparing(
+                                            Employee::getFirstName,
+                                            String.CASE_INSENSITIVE_ORDER
+                                    )
+                    )
+                    .toList();
+
             cbMasterEmployee4.setPlaceholder("Team 4");
             cbMasterEmployee4.setClearButtonVisible(true);
-            cbMasterEmployee4.setItems(employees4.get());
+            cbMasterEmployee4.setItems(sortedEmployees4);
             cbMasterEmployee4.setItemLabelGenerator(item -> item.getFirstName()+ " " + item.getLastName());
-            cbExtraEmployees4.setItems(employees4.get());
+            cbExtraEmployees4.setItems(sortedEmployees4);
             cbExtraEmployees4.setItemLabelGenerator(item -> item.getAbbreviation());
         }
         else{
@@ -1749,10 +1851,25 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         cbExtraEmployees1.setWidth("100%");
         Optional<List<Employee>> employees1 = employeeService.getAll();
         if(employees1.isPresent()){
+
+            List<Employee> sortedEmployees1 = employees1.get().stream()
+                    .sorted(
+                            Comparator.comparingInt(
+                                            (Employee e) -> e.getPriority() == 0
+                                                    ? Integer.MAX_VALUE
+                                                    : e.getPriority()
+                                    )
+                                    .thenComparing(
+                                            Employee::getFirstName,
+                                            String.CASE_INSENSITIVE_ORDER
+                                    )
+                    )
+                    .toList();
+
             cbMasterEmployee1.setPlaceholder("Team 1");
-            cbMasterEmployee1.setItems(employees1.get());
+            cbMasterEmployee1.setItems(sortedEmployees1);
             cbMasterEmployee1.setItemLabelGenerator(item -> item.getFirstName() + " " + item.getLastName());
-            cbExtraEmployees1.setItems(employees1.get());
+            cbExtraEmployees1.setItems(sortedEmployees1);
             cbExtraEmployees1.setItemLabelGenerator(item -> item.getAbbreviation());
         }
         else{
@@ -1769,6 +1886,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         Icon moveIcon2 = VaadinIcon.CAR.create();
         moveIcon2.addClickListener(e -> {
+            activeTeams.add(2);
             workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(1));
             addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(1).getWorkOrderTimeList());
             addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(1).getBowlEntityList());
@@ -1783,10 +1901,25 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         cbExtraEmployees2.setWidth("100%");
         Optional<List<Employee>> employees2 = employeeService.getAll();
         if(employees2.isPresent()){
+
+            List<Employee> sortedEmployees2 = employees2.get().stream()
+                    .sorted(
+                            Comparator.comparingInt(
+                                            (Employee e) -> e.getPriority() == 0
+                                                    ? Integer.MAX_VALUE
+                                                    : e.getPriority()
+                                    )
+                                    .thenComparing(
+                                            Employee::getFirstName,
+                                            String.CASE_INSENSITIVE_ORDER
+                                    )
+                    )
+                    .toList();
+
             cbMasterEmployee2.setPlaceholder("Team 2");
-            cbMasterEmployee2.setItems(employees2.get());
+            cbMasterEmployee2.setItems(sortedEmployees2);
             cbMasterEmployee2.setItemLabelGenerator(item -> item.getFirstName()+ " " + item.getLastName());
-            cbExtraEmployees2.setItems(employees2.get());
+            cbExtraEmployees2.setItems(sortedEmployees2);
             cbExtraEmployees2.setItemLabelGenerator(item -> item.getAbbreviation());
         }
         else{
@@ -1803,6 +1936,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         Icon moveIcon3 = VaadinIcon.CAR.create();
         moveIcon3.addClickListener(e -> {
+            activeTeams.add(3);
             workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(2));
             addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(2).getWorkOrderTimeList());
             addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(2).getBowlEntityList());
@@ -1817,10 +1951,25 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         cbExtraEmployees3.setWidth("100%");
         Optional<List<Employee>> employees3 = employeeService.getAll();
         if(employees3.isPresent()){
+
+            List<Employee> sortedEmployees3 = employees3.get().stream()
+                    .sorted(
+                            Comparator.comparingInt(
+                                            (Employee e) -> e.getPriority() == 0
+                                                    ? Integer.MAX_VALUE
+                                                    : e.getPriority()
+                                    )
+                                    .thenComparing(
+                                            Employee::getFirstName,
+                                            String.CASE_INSENSITIVE_ORDER
+                                    )
+                    )
+                    .toList();
+
             cbMasterEmployee3.setPlaceholder("Team 3");
-            cbMasterEmployee3.setItems(employees3.get());
+            cbMasterEmployee3.setItems(sortedEmployees3);
             cbMasterEmployee3.setItemLabelGenerator(item -> item.getFirstName()+ " " + item.getLastName());
-            cbExtraEmployees3.setItems(employees3.get());
+            cbExtraEmployees3.setItems(sortedEmployees3);
             cbExtraEmployees3.setItemLabelGenerator(item -> item.getAbbreviation());
         }
         else{
@@ -1836,6 +1985,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         Icon moveIcon4 = VaadinIcon.CAR.create();
         moveIcon4.addClickListener(e -> {
+            activeTeams.add(4);
             workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(3));
             addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(3).getWorkOrderTimeList());
             addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(3).getBowlEntityList());
@@ -1850,10 +2000,25 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         cbExtraEmployees4.setWidth("100%");
         Optional<List<Employee>> employees4 = employeeService.getAll();
         if(employees4.isPresent()){
+
+            List<Employee> sortedEmployees4 = employees4.get().stream()
+                    .sorted(
+                            Comparator.comparingInt(
+                                            (Employee e) -> e.getPriority() == 0
+                                                    ? Integer.MAX_VALUE
+                                                    : e.getPriority()
+                                    )
+                                    .thenComparing(
+                                            Employee::getFirstName,
+                                            String.CASE_INSENSITIVE_ORDER
+                                    )
+                    )
+                    .toList();
+
             cbMasterEmployee4.setPlaceholder("Team 4");
-            cbMasterEmployee4.setItems(employees4.get());
+            cbMasterEmployee4.setItems(sortedEmployees4);
             cbMasterEmployee4.setItemLabelGenerator(item -> item.getFirstName()+ " " + item.getLastName());
-            cbExtraEmployees4.setItems(employees4.get());
+            cbExtraEmployees4.setItems(sortedEmployees4);
             cbExtraEmployees4.setItemLabelGenerator(item -> item.getAbbreviation());
         }
         else{
@@ -2015,15 +2180,15 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                     (tool.equals(Tools.LINTZAAGMACHINE))||
                     (tool.equals(Tools.SCHAARLIFT_JLG_KLEIN))||
                     (tool.equals(Tools.MAX_TRAILER))||
-                    (tool.equals(Tools.SCHAARLIFT_JLG_GROOT))){
+                    (tool.equals(Tools.SCHAARLIFT_JLG_GROOT))||
+                    (tool.equals(Tools.BREEKHAMER17TON))||
+                    (tool.equals(Tools.BREEKHAMER60TON))){
                         toolsOkSubView.setSelectedToolTeam(tool, selectedTeam-1);
                         toolsOkSubView.setSelectedProducts(selectedWorkOrder.getProductList());
                         toolsOkSubView.setCustomerByWorkAddress(customerByWorkAddress);
                         optionDialog.add(toolsOkSubView);
                     }
-                    if((tool.equals(Tools.GRIJPBAK))||
-                            (tool.equals(Tools.BREEKHAMER17TON))||
-                            (tool.equals(Tools.BREEKHAMER60TON))){
+                    if((tool.equals(Tools.GRIJPBAK))){
                         toolsRegularIntenseView.setSelectedToolTeam(tool, selectedTeam-1);
                         toolsRegularIntenseView.setSelectedProducts(selectedWorkOrder.getProductList());
                         toolsRegularIntenseView.setCustomerByWorkAddress(customerByWorkAddress);
@@ -2181,14 +2346,15 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         newWorkOrder.setStarter(false);
         newWorkOrder.setWorkDateTime(LocalDateTime.now());
         newWorkOrder.setWorkOrderStatus(WorkOrderStatus.RUNNING);
-        newWorkOrder.setWorkAddress(selectedWorkOrder.getWorkAddress());
-        //newWorkOrder.setWorkLocation(selectedWorkOrder.getWorkLocation());
-        //newWorkOrder.setWorkType(selectedWorkOrder.getWorkType());
-        newWorkOrder.setWorkOrderStatus(selectedWorkOrder.getWorkOrderStatus());
+        newWorkOrder.setWorkAddress(selectedWorkOrder.getWorkAddress().clone());
+        newWorkOrder.setWorkLocation(selectedWorkOrder.getWorkLocation());
 
         newWorkOrder.setLinkedWorkOrders(new ArrayList<>());
+        newWorkOrder.setMasterEmployeeTeam1(starterWorkOrder.getMasterEmployeeTeam1());
 
         WorkOrderHeader newWorkOrderHeader1 = new WorkOrderHeader();
+        newWorkOrderHeader1.setDescription(selectedWorkOrder.getWorkOrderHeaderList().get(0).getDescription());
+        newWorkOrderHeader1.setWorkType(selectedWorkOrder.getWorkOrderHeaderList().get(0).getWorkType());
         WorkOrderHeader newWorkOrderHeader2 = new WorkOrderHeader();
         WorkOrderHeader newWorkOrderHeader3 = new WorkOrderHeader();
         WorkOrderHeader newWorkOrderHeader4 = new WorkOrderHeader();
@@ -2199,6 +2365,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         workOrderHeaders.add(newWorkOrderHeader3);
         workOrderHeaders.add(newWorkOrderHeader4);
         newWorkOrder.setWorkOrderHeaderList(workOrderHeaders);
+
         List<Product>products = new ArrayList<>();
         Product product1 = new Product();
         product1.setId("99999999");
@@ -2214,9 +2381,15 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         //add Id to Starter WorkOrder
         try{
             Optional<WorkOrder> optStarter = workOrderService.getStarterByLinkedId(selectedWorkOrder.getId());
+            //if previous workOrder is a follower
             if(optStarter.isPresent()){
                 optStarter.get().getLinkedWorkOrders().add(id);
                 workOrderService.save(optStarter.get());
+            }
+            //if previous workOrder is a parent
+            else{
+                selectedWorkOrder.getLinkedWorkOrders().add(id);
+                workOrderService.save(selectedWorkOrder);
             }
         }
         catch (Exception e){
@@ -2226,6 +2399,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         selectedWorkOrder = newWorkOrder;
 
         Tab newTab = new Tab(selectedWorkOrder.getWorkDateTime().format(DateTimeFormatter.ofPattern("dd/MM")));
+        newTab.getElement().setProperty("workOrderId", id);
         buddyTab.add(newTab);
         buddyTab.setSelectedTab(newTab);
         addTabButton.setEnabled(false);
@@ -2274,7 +2448,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                         horizontalLayoutLevel6.setVisible(true);
                     }
 
-                    selectProductSubView.setSelectedProductList(selectedWorkOrder.getProductList());
+                    //selectProductSubView.setSelectedProductList(selectedWorkOrder.getProductList());
                     selectProductSubView.getSelectedProductGrid().getDataProvider().refreshAll();
 
                     if (event.getMessage().matches("Product verwijderd")) {
@@ -2286,7 +2460,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                     }
 
                 } catch (ValidationException e) {
-                    Notification notification = Notification.show("Lijn niet toegevoegd, gelieve eerst de hoofding in te vullen aub.");
+                    Notification notification = Notification.show("De hoofding van de werbon is niet volledig ingevuld!");
                     notification.addThemeVariants(NotificationVariant.LUMO_ERROR);
 
                     selectProductSubView.getSelectedProductList().remove(
@@ -2311,6 +2485,8 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             //Open WorkOrder by an other page and search WorkOrder by linkParameter.
             //So for every page with CurrentWorkOrderSubView in it that will open a clicked item in WorkOrderView
             linkParameter = s;
+            activeTeams.clear();
+            activeTeams.add(1);
             List<WorkOrder> workOrderListByStarterId = workOrderService.getWorkOrderListByStarterId(s);
             if((workOrderListByStarterId !=  null) && (workOrderListByStarterId.size() > 0)){
                 selectedCoupledWorkOrders = workOrderListByStarterId;
@@ -2321,6 +2497,10 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             buddyTab.removeAll();
             //add Parent Tab
             Tab parentTab = new Tab();
+            if(selectedCoupledWorkOrders.size() == 1){
+                //for opening floating WorkOrders!!!
+                selectedCoupledWorkOrders.get(0).setStarter(true);
+            }
             WorkOrder partentWorkOrder = selectedCoupledWorkOrders.stream().filter(item -> item.getStarter()).findFirst().get();
             parentTab.setLabel(partentWorkOrder.getWorkDateTime().format(DateTimeFormatter.ofPattern("dd/MM")));
             parentTab.getElement().setProperty("workOrderId", partentWorkOrder.getId());
@@ -2349,15 +2529,15 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 }
             });
 
-            //show save button and send to Proforma if selectedWorkOrder is not Finished
-            if(!selectedWorkOrder.getWorkOrderStatus().equals(WorkOrderStatus.FINISHED)){
-                finishButton.setVisible(true);
-                saveWorkOrderButton.setVisible(true);
-            }
-            else{
-                finishButton.setVisible(false);
-                saveWorkOrderButton.setVisible(false);
-            }
+//            //show save button and send to Proforma if selectedWorkOrder is not Finished
+//            if(!selectedWorkOrder.getWorkOrderStatus().equals(WorkOrderStatus.FINISHED)){
+//                finishButton.setVisible(true);
+//                saveWorkOrderButton.setVisible(true);
+//            }
+//            else{
+//                finishButton.setVisible(false);
+//                saveWorkOrderButton.setVisible(false);
+//            }
 
         }
         else{

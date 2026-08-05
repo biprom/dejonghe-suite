@@ -17,6 +17,8 @@ import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.textfield.IntegerField;
+import com.vaadin.flow.component.textfield.NumberField;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.virtuallist.VirtualList;
 import com.vaadin.flow.data.binder.Binder;
@@ -45,6 +47,7 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
     Optional<List<Employee>> employees;
 
     TextField searchField;
+    Button clearFilterButton;
     Dialog editDialog;
     Notification deleteWorkorderNotification;
 
@@ -57,6 +60,7 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
     Checkbox technicianCheckBox;
     DatePicker birthDayPicker;
     DatePicker startDayPicker;
+    IntegerField prioField;
 
     Employee employeeToEdit;
     EmployeeCard employeeCardToEdit;
@@ -165,6 +169,12 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
                 .bind(Employee::getBirthDate, Employee::setBirthDate);
         employeeBinder.forField(startDayPicker)
                 .bind(Employee::getDateOfService, Employee::setDateOfService);
+        employeeBinder.forField(prioField)
+                .asRequired("Prioriteit is verplicht")
+                .withValidator(
+                        value -> value != null,
+                        "Prioriteit is verplicht")
+                .bind(Employee::getPriority, Employee::setPriority);
     }
 
     private void setUpEditDialog() {
@@ -208,9 +218,10 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
         technicianCheckBox = new Checkbox("technieker");
         birthDayPicker = new DatePicker("geboortedatum");
         startDayPicker = new DatePicker("gestart op");
+        prioField = new IntegerField("prioriteit");
 
         VerticalLayout dialogLayout = new VerticalLayout(firstNameField,
-                lastNameField,abbriviationField,phoneNumberField,birthDayPicker,startDayPicker,technicianCheckBox);
+                lastNameField,abbriviationField,phoneNumberField,birthDayPicker,startDayPicker,technicianCheckBox,prioField);
         dialogLayout.setPadding(false);
         dialogLayout.setSpacing(false);
         dialogLayout.setAlignItems(FlexComponent.Alignment.STRETCH);
@@ -221,7 +232,10 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
 
 
     private HorizontalLayout getSearchBar() {
+
         HorizontalLayout searchLayout = new HorizontalLayout();
+        clearFilterButton = new Button(VaadinIcon.CLOSE.create());
+
         searchLayout.setWidth("100%");
         searchField = new TextField();
         searchField.setSizeFull();
@@ -241,7 +255,12 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
                 Notification.show("Geen personeel gevonden");
             }
         });
-        searchLayout.add(searchField);
+
+        clearFilterButton.addClickListener(e -> {
+            searchField.setValue("");
+        });
+
+        searchLayout.add(clearFilterButton,searchField);
         return searchLayout;
     }
 
@@ -256,9 +275,10 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
     private void getAllEmployees() {
         employees = employeeService.getAll()
                 .map(list -> list.stream()
-                        .sorted(Comparator.comparing(
-                                c -> c.getFirstName().replaceFirst("^[’']", ""),
-                                String.CASE_INSENSITIVE_ORDER
+                        .sorted(Comparator.comparingInt(
+                                e -> e.getPriority() == 0
+                                        ? Integer.MAX_VALUE
+                                        : e.getPriority()
                         ))
                         .collect(Collectors.toList())
                 );
@@ -315,6 +335,7 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
             Employee employeeToAdd = new Employee();
             employeeToAdd.setFirstName("");
             employeeToAdd.setLastName("");
+            employeeToAdd.setPriority(0);
             employeeToAdd.setAbbreviation("");
             EmployeeCard employeeCard = new EmployeeCard(employeeToAdd,this);
             employees.get().add(employeeToAdd);

@@ -26,6 +26,11 @@ public class ProductService {
 
     List<Product> elements = new ArrayList<>();
 
+    public Optional<Product>findById(String id) {
+        Optional<Product> optionalProduct = productRepo.findById(id);
+        return optionalProduct;
+    }
+
     public Optional<List<Product>>findByProductCodeContaining(String productCode) {
         Optional<List<Product>> optionalProducts = Optional.of(productRepo.findByProductCodeContainsIgnoreCase(productCode));
         return optionalProducts;

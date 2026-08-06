@@ -1,13 +1,13 @@
 package com.adverto.dejonghe.server.views.workorder;
 
 import com.adverto.dejonghe.common.dbservices.*;
-import com.adverto.dejonghe.server.customEvents.AddProductEventListener;
-import com.adverto.dejonghe.server.customEvents.GetSelectedWorkOrderEvent;
-import com.adverto.dejonghe.server.customEvents.ReloadProductListEvent;
 import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrder;
 import com.adverto.dejonghe.common.entities.enums.employee.UserFunction;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkOrderStatus;
 import com.adverto.dejonghe.common.entities.invoice.Invoice;
+import com.adverto.dejonghe.server.customEvents.AddProductEventListener;
+import com.adverto.dejonghe.server.customEvents.GetSelectedWorkOrderEvent;
+import com.adverto.dejonghe.server.customEvents.ReloadProductListEvent;
 import com.adverto.dejonghe.server.services.invoice.InvoiceServices;
 import com.adverto.dejonghe.server.views.subViews.CurrentWorkOrdersSubView;
 import com.adverto.dejonghe.server.views.subViews.SelectProductSubView;
@@ -22,7 +22,6 @@ import com.vaadin.flow.component.menubar.MenuBar;
 import com.vaadin.flow.component.menubar.MenuBarVariant;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
-import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.router.*;
@@ -31,15 +30,16 @@ import org.springframework.context.event.EventListener;
 import org.springframework.data.mongodb.gridfs.GridFsTemplate;
 import org.springframework.stereotype.Component;
 import org.vaadin.lineawesome.LineAwesomeIconUrl;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
 @PageTitle("Werkbon")
-@Route("werkbonnenAfgewerkt")
+@Route("werkbonnenAfgewerktDejonghe")
 @Menu(order = 0, icon = LineAwesomeIconUrl.WRENCH_SOLID)
 @Component
 @Scope("prototype")
-public class FinishedWorkorderView extends VerticalLayout implements BeforeEnterObserver,HasUrlParameter<String> {
+public class FinishedDejongheWorkorderView extends VerticalLayout implements BeforeEnterObserver,HasUrlParameter<String> {
 
     private final InvoiceServices invoiceServices;
     EmployeeService employeeService;
@@ -57,17 +57,17 @@ public class FinishedWorkorderView extends VerticalLayout implements BeforeEnter
     Optional<List<WorkOrder>> allFinishedStarters;
     MenuBar actionBar;
 
-    public FinishedWorkorderView(ProductService productService,
-                                 CustomerService customerService,
-                                 EmployeeService employeeService,
-                                 SelectProductSubView selectProductSubView,
-                                 WorkOrderService workOrderService,
-                                 GridFsTemplate gridFsTemplate,
-                                 CurrentWorkOrdersSubView currtentWorkOrdersSubVieuw,
-                                 ShowImageSubVieuw showImageSubVieuw,
-                                 AddProductEventListener listener,
-                                 InvoiceServices createOngoingInvoiceService, InvoiceServices invoiceServices,
-                                 InvoiceService invoiceService) {
+    public FinishedDejongheWorkorderView(ProductService productService,
+                                         CustomerService customerService,
+                                         EmployeeService employeeService,
+                                         SelectProductSubView selectProductSubView,
+                                         WorkOrderService workOrderService,
+                                         GridFsTemplate gridFsTemplate,
+                                         CurrentWorkOrdersSubView currtentWorkOrdersSubVieuw,
+                                         ShowImageSubVieuw showImageSubVieuw,
+                                         AddProductEventListener listener,
+                                         InvoiceServices createOngoingInvoiceService, InvoiceServices invoiceServices,
+                                         InvoiceService invoiceService) {
         this.productService = productService;
         this.selectProductSubView = selectProductSubView;
         this.customerService = customerService;
@@ -85,7 +85,7 @@ public class FinishedWorkorderView extends VerticalLayout implements BeforeEnter
 
     private HorizontalLayout getActionMenu() {
         HorizontalLayout actionBarLayout = new HorizontalLayout();
-        actionBarLayout.setAlignItems(FlexComponent.Alignment.CENTER);
+        actionBarLayout.setAlignItems(Alignment.CENTER);
         actionBarLayout.setPadding(true);
 
         //add Back button
@@ -156,7 +156,12 @@ public class FinishedWorkorderView extends VerticalLayout implements BeforeEnter
     public void loadData() {
         allFinishedStarters = workOrderService.getAllByStatusAndStarter(WorkOrderStatus.FINISHED, true);
         if(allFinishedStarters.isPresent()){
-            currtentWorkOrdersSubVieuw.addItemsToPendingWorkOrderGrid(allFinishedStarters.get());
+            currtentWorkOrdersSubVieuw.addItemsToPendingWorkOrderGrid(allFinishedStarters.get().stream().filter(x -> {
+                if((x.getWorkAddress() != null) && (x.getWorkAddress().getAddressName() != null)){
+                    return x.getWorkAddress().getAddressName().matches("Atelier Dejonghe");
+                }
+                return false;
+            }).collect(Collectors.toList()));
             currtentWorkOrdersSubVieuw.setAuthorisation(UserFunction.ADMIN);
             //currtentWorkOrdersSubVieuw.setSizeFull();
         }

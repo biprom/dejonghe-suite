@@ -11,6 +11,7 @@ import com.adverto.dejonghe.server.views.invoice.ProformaInvoiceView;
 import com.adverto.dejonghe.server.views.orders.OrderView;
 import com.adverto.dejonghe.server.views.quote.QuoteView;
 import com.adverto.dejonghe.server.views.workorder.AngelWorkorderView;
+import com.adverto.dejonghe.server.views.workorder.FinishedDejongheWorkorderView;
 import com.adverto.dejonghe.server.views.workorder.FinishedWorkorderView;
 import com.adverto.dejonghe.server.views.workorder.PendingWorkorderView;
 import com.vaadin.flow.component.Component;
@@ -37,6 +38,7 @@ import com.vaadin.flow.theme.lumo.LumoUtility;
 import lombok.extern.slf4j.Slf4j;
 
 import java.text.DecimalFormatSymbols;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
@@ -57,8 +59,7 @@ public class MainLayout extends AppLayout {
     DrawerToggle toggle;
 
     Map<Class<? extends Component>, String> noNav;
-    Map<Class<? extends Component>, String> navCustomer;
-    Map<Class<? extends Component>, String> navWorkOrder;
+    Map<Class<? extends Component>, String> navWorkOrder = new LinkedHashMap<>();
 
     public MainLayout() {
         UI.getCurrent().setLocale(new Locale("nl", "BE"));
@@ -152,11 +153,10 @@ public class MainLayout extends AppLayout {
         SideNavItem workOrderLink = new SideNavItem("", FinishedWorkorderView.class);
         workOrderLink.setPrefixComponent(createWorkOrderMenuLayout("Werkbon".toUpperCase(),VaadinIcon.TWIN_COL_SELECT.create()));
 
-        navWorkOrder = Map.of(
-                PendingWorkorderView.class, "Openstaand".toUpperCase(),
-                FinishedWorkorderView.class, "Afgewerkt".toUpperCase(),
-                AngelWorkorderView.class, "Zwevend".toUpperCase()
-        );
+        navWorkOrder.put(PendingWorkorderView.class, "OPENSTAAND");
+        navWorkOrder.put(FinishedWorkorderView.class, "AFGEWERKT");
+        navWorkOrder.put(FinishedDejongheWorkorderView.class, "AFGEWERKT DEJONGHE");
+        navWorkOrder.put(AngelWorkorderView.class, "ZWEVEND");
 
         SideNavItem customerLink = new SideNavItem("",
                 CustomerDashboardView.class);
@@ -200,11 +200,11 @@ public class MainLayout extends AppLayout {
             if (view.equals(FinishedWorkorderView.class)) {
                 button.setClassName("subNav-button");
                 button.addClassName("subNav-selected");
-                subMenusLayout.addToEnd(button);
+                subMenusLayout.add(button);
             }
             else{
                 button.setClassName("subNav-button");
-                subMenusLayout.addToEnd(button);
+                subMenusLayout.add(button);
             }
         });
 

@@ -846,8 +846,6 @@ public class CurrentQuoteSubView extends VerticalLayout {
         return deleteQuoteNotification;
     }
 
-
-
     public Button createCloseBtn(Notification notification) {
         Button removeBtn = new Button(VaadinIcon.TRASH.create(),
                 clickEvent -> {

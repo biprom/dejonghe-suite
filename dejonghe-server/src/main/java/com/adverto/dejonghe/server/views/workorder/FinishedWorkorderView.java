@@ -156,7 +156,12 @@ public class FinishedWorkorderView extends VerticalLayout implements BeforeEnter
     public void loadData() {
         allFinishedStarters = workOrderService.getAllByStatusAndStarter(WorkOrderStatus.FINISHED, true);
         if(allFinishedStarters.isPresent()){
-            currtentWorkOrdersSubVieuw.addItemsToPendingWorkOrderGrid(allFinishedStarters.get());
+            currtentWorkOrdersSubVieuw.addItemsToPendingWorkOrderGrid(allFinishedStarters.get().stream().filter(x -> {
+                if((x.getWorkAddress() != null) && (x.getWorkAddress().getAddressName() != null)){
+                    return !x.getWorkAddress().getAddressName().matches("Atelier Dejonghe");
+                }
+                return true;
+            }).collect(Collectors.toList()));
             currtentWorkOrdersSubVieuw.setAuthorisation(UserFunction.ADMIN);
             //currtentWorkOrdersSubVieuw.setSizeFull();
         }
@@ -279,7 +284,6 @@ public class FinishedWorkorderView extends VerticalLayout implements BeforeEnter
                     workOrder.setWorkOrderStatus(WorkOrderStatus.INVOICED);
                     workOrderService.save(workOrder);
                 }
-                workOrderService.deleteAll(selectedWorkOrders.get());
                 loadData();
             }
         };

@@ -230,13 +230,9 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
     private Icon getOpenPdfIcon(WorkOrder workOrder) {
         Icon pdfIcon = new Icon(VaadinIcon.FILE_FONT);
         pdfIcon.addClickListener(event -> {
-            String url = workOrderPdfServices.generateWorkOrderPDF(workOrder);
-            //now show it in a new tab in the browser
-            pdfController.setPdfNaam(url);
-
-            //to open tab with pdf
-            UI.getCurrent().getPage().open("/pdf", "_blank");
-
+            UI.getCurrent()
+                    .getPage()
+                    .open("/pdf/workorder/" + workOrder.getId(), "_blank");
         });
         return pdfIcon;
     }

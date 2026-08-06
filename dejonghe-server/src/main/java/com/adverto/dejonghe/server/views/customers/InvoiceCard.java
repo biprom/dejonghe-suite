@@ -416,7 +416,7 @@ public class InvoiceCard extends Card {
             if(totalInvoiceAmount > 0.0) {
                 Map<String, List<String>> params = new HashMap<>();
                 params.put("customerId", List.of(customer.getId().toString()));
-                params.put("status", List.of("UNPAID"));
+                //params.put("status", List.of("UNPAID"));
 
                 RouterLink link = new RouterLink();
                 link.getStyle().set("color", "black");

@@ -335,6 +335,7 @@ public class InvoiceServices {
                 .collect(Collectors.toList());
 
         //sort selected Products
+        Collections.reverse(selectedProducts);
         Comparator<Product> productComparator = (o1, o2) -> compareOnderdeel(o1.getInternalName(), o2.getInternalName());
         selectedProducts.sort(productComparator);
 
@@ -586,7 +587,7 @@ public class InvoiceServices {
                 regularKm.setBTravel(true);
                 regularKm.setTeamNumber(0);
                 if(amountRidesRegular > 1) {
-                    regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
+                    regularKm.setInternalName(regularKm.getInternalName() + "( "+ amountRidesRegular + " x heen en terug )");
                 }
                 allProducts.add(regularKm);
             }
@@ -604,7 +605,7 @@ public class InvoiceServices {
                 trailerKm.setBTravel(true);
                 trailerKm.setTeamNumber(0);
                 if(amountRidesRegular > 1) {
-                    trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
+                    trailerKm.setInternalName(trailerKm.getInternalName() + "( "+ amountRidesTrailer + " x heen en terug )");
                 }
                 allProducts.add(trailerKm);
             }
@@ -615,7 +616,7 @@ public class InvoiceServices {
                 craneKm.setBTravel(true);
                 craneKm.setTeamNumber(0);
                 if(amountRidesRegular > 1) {
-                    craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
+                    craneKm.setInternalName(craneKm.getInternalName() + "( "+ amountRidesCrane + " x heen en terug )");
                 }
                 allProducts.add(craneKm);
             }
@@ -668,7 +669,7 @@ public class InvoiceServices {
                 regularKm.setBTravel(true);
                 regularKm.setTeamNumber(0);
                 if(amountRidesRegular > 1) {
-                    regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
+                    regularKm.setInternalName(regularKm.getInternalName() + "( "+ amountRidesRegular + " x heen en terug )");
                 }
                 allProducts.add(regularKm);
             }
@@ -687,7 +688,7 @@ public class InvoiceServices {
                 trailerKm.setBTravel(true);
                 trailerKm.setTeamNumber(0);
                 if(amountRidesRegular > 1) {
-                    trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
+                    trailerKm.setInternalName(trailerKm.getInternalName() + "( "+ amountRidesTrailer + " x heen en terug )");
                 }
                 allProducts.add(trailerKm);
             }
@@ -698,7 +699,7 @@ public class InvoiceServices {
                 craneKm.setBTravel(true);
                 craneKm.setTeamNumber(0);
                 if(amountRidesRegular > 1) {
-                    craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
+                    craneKm.setInternalName(craneKm.getInternalName() + "( "+ amountRidesCrane + " x heen en terug )");
                 }
                 allProducts.add(craneKm);
             }
@@ -956,6 +957,8 @@ public class InvoiceServices {
                     .filter(Objects::nonNull)
                     .filter((product -> (product.getInternalName() != null) && (product.getInternalName().length() > 0)))
                     .collect(Collectors.toList());
+
+            Collections.reverse(selectedProducts);
 
             //add date of looped Workorder to the Products so we can generate right attachements!
             selectedProducts.stream().forEach(product -> product.setDate(workOrder.getWorkDateTime().toLocalDate()));
@@ -1217,7 +1220,7 @@ public class InvoiceServices {
                     regularKm.setBTravel(true);
                     regularKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesRegular > 1) {
-                        regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
+                        regularKm.setInternalName(regularKm.getInternalName() + "( "+ amountRidesRegular + " x heen en terug )");
                     }
                     allProducts.add(regularKm);
                 }
@@ -1237,7 +1240,7 @@ public class InvoiceServices {
                     trailerKm.setBTravel(true);
                     trailerKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesTrailer > 1) {
-                        trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
+                        trailerKm.setInternalName(trailerKm.getInternalName() + "( "+ amountRidesTrailer + " x heen en terug )");
                     }
                     allProducts.add(trailerKm);
                 }
@@ -1249,7 +1252,7 @@ public class InvoiceServices {
                     craneKm.setBTravel(true);
                     craneKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesCrane > 1) {
-                        craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
+                        craneKm.setInternalName(craneKm.getInternalName() + "( "+ amountRidesCrane + " x heen en terug )");
                     }
                     allProducts.add(craneKm);
                 }
@@ -1307,7 +1310,7 @@ public class InvoiceServices {
                     regularKm.setBTravel(true);
                     regularKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesRegular > 1) {
-                        regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
+                        regularKm.setInternalName(regularKm.getInternalName() + "( "+ amountRidesRegular + " x heen en terug )");
                     }
                     allProducts.add(regularKm);
                 }
@@ -1329,7 +1332,7 @@ public class InvoiceServices {
                     trailerKm.setBTravel(true);
                     trailerKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesTrailer > 1) {
-                        trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
+                        trailerKm.setInternalName(trailerKm.getInternalName() + "( "+ amountRidesTrailer + " x heen en terug )");
                     }
                     allProducts.add(trailerKm);
                 }
@@ -1341,7 +1344,7 @@ public class InvoiceServices {
                     craneKm.setBTravel(true);
                     craneKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesCrane > 1) {
-                        craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
+                        craneKm.setInternalName(craneKm.getInternalName() + "( "+ amountRidesCrane + " x heen en terug )");
                     }
                     allProducts.add(craneKm);
                 }

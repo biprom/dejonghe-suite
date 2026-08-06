@@ -1,5 +1,9 @@
 package com.adverto.dejonghe.server.views.invoice;
 
+import com.adverto.dejonghe.common.dbservices.WorkOrderService;
+import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrder;
+import com.adverto.dejonghe.common.services.WorkOrderPdfServices;
+import com.adverto.dejonghe.server.Controllers.PdfController;
 import com.adverto.dejonghe.server.customEvents.AddProductEventListener;
 import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.adverto.dejonghe.common.dbservices.CustomerService;
@@ -64,6 +68,7 @@ import java.util.stream.Collectors;
 public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<String>,HasDynamicTitle {
 
     private final InvoiceService invoiceService;
+    private final WorkOrderService workOrderService;
     ProductService productService;
     SelectProductSubView selectProductSubView;
     SearchCustomerSubView searchCustomerSubView;
@@ -72,6 +77,8 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
     ShowImageSubVieuw showImageSubView;
     InvoiceServices invoiceServices;
     AddProductEventListener listener;
+    WorkOrderPdfServices workOrderPdfServices;
+    PdfController pdfController;
 
     SplitLayout mainSplitLayout;
     SplitLayout headerSplitLayout;
@@ -115,6 +122,7 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
 
     Button generateInvoiceButton = new Button("Maak factuur");
     Button showPDFButton = new Button("Bekijk PDF");
+    Button openWorkOrdersButton = new Button("Open werkbonnen");
 
     Checkbox checkbToCheck;
     Checkbox checkbApproved;
@@ -140,7 +148,9 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
                           GridFsTemplate gridFsTemplate,
                           ShowImageSubVieuw showImageSubView,
                           InvoiceServices invoiceServices,
-                          AddProductEventListener listener) {
+                          AddProductEventListener listener,
+                          WorkOrderPdfServices workOrderPdfServices,
+                          PdfController pdfController, WorkOrderService workOrderService) {
         this.productService = productService;
         this.selectProductSubView = selectProductSubView;
         this.searchCustomerSubView = searchCustomerSubView;
@@ -150,6 +160,8 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
         this.showImageSubView = showImageSubView;
         this.invoiceServices = invoiceServices;
         this.listener = listener;
+        this.workOrderPdfServices = workOrderPdfServices;
+        this.pdfController = pdfController;
 
         this.setSizeFull();
         setUpShowImageButton();
@@ -184,6 +196,7 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
         this.setSpacing(false);
 
         this.add(mainSplitLayout);
+        this.workOrderService = workOrderService;
     }
 
     private void setUpFinishInvoice() {
@@ -250,6 +263,24 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
                 ButtonVariant.LUMO_WARNING);
         showPDFButton.addClickListener(e -> {
             invoiceServices.generateInvoicePDF(selectedInvoice);
+        });
+
+        openWorkOrdersButton.setWidth("100%");
+        openWorkOrdersButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY,
+                ButtonVariant.LUMO_WARNING);
+        openWorkOrdersButton.addClickListener(e -> {
+            if(selectedInvoice.getWorkOrderList() != null && selectedInvoice.getWorkOrderList().size() > 0){
+                for(WorkOrder workOrder : selectedInvoice.getWorkOrderList()){
+                    UI.getCurrent()
+                            .getPage()
+                            .open("/pdf/workorder/" + workOrder.getId(), "_blank");
+                }
+            }
+            else{
+                Notification notification = Notification.show("Er zijn geen werkbonnen gekoppeld in dit document");
+                notification.addThemeVariants(NotificationVariant.LUMO_WARNING);
+            }
+
         });
     }
 
@@ -485,7 +516,7 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
         VerticalLayout buttonLayout = new VerticalLayout();
         buttonLayout.setSizeFull();
         buttonLayout.setPadding(false);
-        buttonLayout.add(showPDFButton, generateInvoiceButton);
+        buttonLayout.add(openWorkOrdersButton,showPDFButton, generateInvoiceButton);
         mainvLayout.add(new Span(""),hLayout,buttonLayout,dropEnabledUpload,showImageButton);
         return mainvLayout;
     }

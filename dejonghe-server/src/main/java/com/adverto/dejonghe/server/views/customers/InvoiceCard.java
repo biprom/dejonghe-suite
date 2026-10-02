@@ -37,7 +37,6 @@ import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationException;
 import com.vaadin.flow.router.QueryParameters;
 import com.vaadin.flow.router.RouterLink;
-import org.checkerframework.checker.units.qual.C;
 
 import java.text.NumberFormat;
 import java.time.LocalDate;
@@ -106,6 +105,10 @@ public class InvoiceCard extends Card {
         customerBinder = new Binder<>();
         customerBinder.forField(nameField)
                 .asRequired("Naam is verplicht")
+                .withValidator(
+                        name -> name == null || name.length() <= 33,
+                        "Naam mag maximaal 33 tekens bevatten"
+                )
                 .bind(Customer::getName, Customer::setName);
         customerBinder.forField(vatNumberField)
                 .withValidator(value -> {
@@ -370,6 +373,7 @@ public class InvoiceCard extends Card {
         phoneField = new TextField("gsm");
 
         nameField = new TextField("naam");
+        nameField.setMaxLength(33);
         streetField = new TextField("straat + nr");
         zipField = new TextField("postcode");
         cityField = new TextField("stad");
@@ -403,95 +407,154 @@ public class InvoiceCard extends Card {
     }
 
     private Component getAllInvoicesForCustomer() {
-        List<Invoice> allInvoicesForThisCustomer = invoiceService.getInvoicesForCustomer(customer.getId());
-        if((allInvoicesForThisCustomer != null) && (!allInvoicesForThisCustomer.isEmpty())) {
-            double totalInvoiceAmount = allInvoicesForThisCustomer.stream().filter(invoice -> invoice.getBFinalInvoice() == true)
-                    .filter(x -> x.getBFinalInvoice() == true)
-                    .flatMap(invoice -> invoice.getProductList().stream())
-                    .map(Product::getTotalPrice)
-                    .filter(Objects::nonNull)
-                    .mapToDouble(Double::doubleValue)
-                    .sum();
 
-            if(totalInvoiceAmount > 0.0) {
-                Map<String, List<String>> params = new HashMap<>();
-                params.put("customerId", List.of(customer.getId().toString()));
-                //params.put("status", List.of("UNPAID"));
+        List<Invoice> allInvoicesForThisCustomer =
+                invoiceService.getInvoicesForCustomer(customer.getId());
 
-                RouterLink link = new RouterLink();
-                link.getStyle().set("color", "black");
-                link.setText(
-                        allInvoicesForThisCustomer.stream().filter(x -> x.getBFinalInvoice() == true).collect(Collectors.toList()).size() + " factur(en) (" + df.format(totalInvoiceAmount) + " € excl BTW).");
-
-
-                link.setRoute(FinalInvoiceView.class);
-                link.setQueryParameters(new QueryParameters(params));
-
-                link.getStyle().set("font-size", "20px");
-
-                return link;
-            }
-            else{
-                return new Span("");
-            }
-        }
-        else{
+        if (allInvoicesForThisCustomer == null || allInvoicesForThisCustomer.isEmpty()) {
             return new Span("");
         }
+
+        List<Invoice> finalInvoices = allInvoicesForThisCustomer.stream()
+                .filter(invoice -> Boolean.TRUE.equals(invoice.getBFinalInvoice()))
+                .toList();
+
+        double totalInvoiceAmount = finalInvoices.stream()
+                .flatMap(invoice -> invoice.getProductList().stream())
+
+                // Producten die opgenomen zijn in een merged product
+                // niet apart meetellen
+                .filter(product ->
+                        product.getMergedProduct() == null
+                                || !product.getMergedProduct()
+                )
+
+                .map(Product::getTotalPrice)
+                .filter(Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .sum();
+
+
+        if (totalInvoiceAmount <= 0.0) {
+            return new Span("");
+        }
+
+        Map<String, List<String>> params = new HashMap<>();
+        params.put(
+                "customerId",
+                List.of(customer.getId().toString())
+        );
+
+        String text =
+                finalInvoices.size()
+                        + " factur(en) ("
+                        + df.format(totalInvoiceAmount)
+                        + " € excl BTW).";
+
+
+        RouterLink link = new RouterLink();
+
+        link.setText(text);
+
+        link.setRoute(FinalInvoiceView.class);
+        link.setQueryParameters(
+                new QueryParameters(params)
+        );
+
+        link.getStyle()
+                .set("color", "black")
+                .set("font-size", "20px");
+
+        return link;
     }
 
     private Component checkIfThereAreUnpayedBills() {
-        List<Invoice> unpayedExpiredInvoices = invoiceService.getUnpayedOpenInvoices(customer.getId());
-        if((unpayedExpiredInvoices != null) && (!unpayedExpiredInvoices.isEmpty())) {
-            double totalInvoiceAmount = unpayedExpiredInvoices.stream().filter(invoice -> invoice.getBFinalInvoice() == true)
-                    .flatMap(invoice -> invoice.getProductList().stream())
-                    .map(Product::getTotalPrice)
-                    .filter(Objects::nonNull)
-                    .mapToDouble(Double::doubleValue)
-                    .sum();
 
-            if(totalInvoiceAmount > 0.0) {
-                Map<String, List<String>> params = new HashMap<>();
-                params.put("customerId", List.of(customer.getId().toString()));
-                params.put("status", List.of("UNPAID"));
+        List<Invoice> unpayedExpiredInvoices =
+                invoiceService.getUnpayedOpenInvoices(customer.getId());
 
-                RouterLink link = new RouterLink();
-                link.setText(
-                        unpayedExpiredInvoices.stream().filter(x -> x.getBFinalInvoice() == true).collect(Collectors.toList()).size() + " openstaande factur(en) (" + df.format(totalInvoiceAmount) + " € excl BTW)." +
-                        " Waarvan betaald : " + unpayedExpiredInvoices.stream()
-                        .flatMap(invoice ->
-                                Optional.ofNullable(invoice.getPaymentList())
-                                        .orElse(Collections.emptyList())
-                                        .stream())
-                        .map(Payment::getPaymentAmount)
-                        .filter(Objects::nonNull)
-                        .mapToDouble(Double::doubleValue)
-                        .sum()+ " €");
-
-                link.setRoute(FinalInvoiceView.class);
-                link.setQueryParameters(new QueryParameters(params));
-
-                link.getStyle().set("font-size", "20px");
-
-                return link;
-            }
-            else{
-
-            }return new Span("");
-        }
-        else{
+        if (unpayedExpiredInvoices == null || unpayedExpiredInvoices.isEmpty()) {
             return new Span("");
         }
+
+        List<Invoice> finalInvoices = unpayedExpiredInvoices.stream()
+                .filter(invoice -> Boolean.TRUE.equals(invoice.getBFinalInvoice()))
+                .toList();
+
+        double totalInvoiceAmount = finalInvoices.stream()
+                .flatMap(invoice -> invoice.getProductList().stream())
+
+                // Producten die deel uitmaken van een merged product
+                // niet nog eens apart meetellen
+                .filter(product ->
+                        product.getMergedProduct() == null
+                                || !product.getMergedProduct()
+                )
+
+                .map(Product::getTotalPrice)
+                .filter(Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .sum();
+
+        double paidAmount = finalInvoices.stream()
+                .flatMap(invoice ->
+                        Optional.ofNullable(invoice.getPaymentList())
+                                .orElse(Collections.emptyList())
+                                .stream()
+                )
+                .map(Payment::getPaymentAmount)
+                .filter(Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .sum();
+
+        if (totalInvoiceAmount <= 0.0) {
+            return new Span("");
+        }
+
+        Map<String, List<String>> params = new HashMap<>();
+        params.put("customerId", List.of(customer.getId().toString()));
+        params.put("status", List.of("UNPAID"));
+
+        String text =
+                finalInvoices.size()
+                        + " openstaande factur(en) ("
+                        + df.format(totalInvoiceAmount)
+                        + " € excl BTW).";
+
+        if (paidAmount > 0.0) {
+            text += " Waarvan betaald : "
+                    + df.format(paidAmount)
+                    + " €";
+        }
+
+        RouterLink link = new RouterLink();
+        link.setText(text);
+
+        link.setRoute(FinalInvoiceView.class);
+        link.setQueryParameters(new QueryParameters(params));
+
+        link.getStyle().set("font-size", "20px");
+
+        return link;
     }
 
     private Component checkIfThereAreUnpayedExpiredBills() {
         List<Invoice> unpayedExpiredInvoices = invoiceService.getUnpayedExpiredInvoices(customer.getId(), LocalDate.now());
         if((unpayedExpiredInvoices != null) && (!unpayedExpiredInvoices.isEmpty())) {
-            double totalUnpayedExpired = unpayedExpiredInvoices.stream().filter(invoice -> invoice.getBFinalInvoice() == true)
-                    .filter(x -> x.getBFinalInvoice() == true)
+            double totalUnpayedExpired = unpayedExpiredInvoices.stream()
+
+                    .filter(invoice -> Boolean.TRUE.equals(invoice.getBFinalInvoice()))
+
                     .flatMap(invoice -> invoice.getProductList().stream())
+
+                    .filter(product ->
+                            product.getMergedProduct() == null
+                                    || !product.getMergedProduct()
+                    )
+
                     .map(Product::getTotalPrice)
                     .filter(Objects::nonNull)
+
                     .mapToDouble(Double::doubleValue)
                     .sum();
 
@@ -503,22 +566,33 @@ public class InvoiceCard extends Card {
 
                 RouterLink link = new RouterLink();
                 link.getStyle().set("color", "red");
-                link.setText(
-                        unpayedExpiredInvoices.stream().filter(x -> x.getBFinalInvoice() == true).collect(Collectors.toList()).size() +
-                                " vervallen factur(en) : (" +
-                                df.format(totalUnpayedExpired) +
-                                " € excl BTW)." +
-                        " Waarvan betaald : " + unpayedExpiredInvoices.stream()
-                                .flatMap(invoice ->
-                                        Optional.ofNullable(invoice.getPaymentList())
-                                                .orElse(Collections.emptyList())
-                                                .stream())
-                                .map(Payment::getPaymentAmount)
-                                .filter(Objects::nonNull)
-                                .mapToDouble(Double::doubleValue)
-                                .sum() + " €"
-                );
+                long expiredInvoiceCount = unpayedExpiredInvoices.stream()
+                        .filter(x -> Boolean.TRUE.equals(x.getBFinalInvoice()))
+                        .count();
 
+                double paidAmount = unpayedExpiredInvoices.stream()
+                        .flatMap(invoice ->
+                                Optional.ofNullable(invoice.getPaymentList())
+                                        .orElse(Collections.emptyList())
+                                        .stream())
+                        .map(Payment::getPaymentAmount)
+                        .filter(Objects::nonNull)
+                        .mapToDouble(Double::doubleValue)
+                        .sum();
+
+                String text =
+                        expiredInvoiceCount
+                                + " vervallen factur(en) : ("
+                                + df.format(totalUnpayedExpired)
+                                + " € excl BTW).";
+
+                if (paidAmount > 0.0) {
+                    text += " Waarvan betaald : "
+                            + df.format(paidAmount)
+                            + " €";
+                }
+
+                link.setText(text);
                 link.setRoute(FinalInvoiceView.class);
                 link.setQueryParameters(new QueryParameters(params));
 

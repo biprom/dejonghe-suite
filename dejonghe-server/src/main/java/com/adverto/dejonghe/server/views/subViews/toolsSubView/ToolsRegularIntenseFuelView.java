@@ -1,11 +1,11 @@
 package com.adverto.dejonghe.server.views.subViews.toolsSubView;
 
-import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.adverto.dejonghe.common.dbservices.ProductService;
 import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.enums.workorder.Tools;
 import com.adverto.dejonghe.common.entities.enums.workorder.ToolsLabor;
 import com.adverto.dejonghe.common.entities.product.product.Product;
+import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.dialog.Dialog;
@@ -76,6 +76,20 @@ public class ToolsRegularIntenseFuelView extends VerticalLayout {
         HorizontalLayout horizontalLayout = new HorizontalLayout();
         horizontalLayout.setSpacing(true);
         tfFuel = new TextField();
+        tfFuel.addValueChangeListener(event -> {
+            String value = event.getValue();
+
+            if (value == null || value.isBlank()) {
+                amountFuel = 0;
+                return;
+            }
+
+            try {
+                amountFuel = Integer.parseInt(value.replace(",", "."));
+            } catch (NumberFormatException e) {
+                amountFuel = 0;
+            }
+        });
         Button minusButton = new Button(VaadinIcon.MINUS.create());
         minusButton.addClickListener(buttonClickEvent ->{
                 amountFuel--;

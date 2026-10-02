@@ -1,11 +1,11 @@
 package com.adverto.dejonghe.server.views.subViews.toolsSubView;
 
-import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.adverto.dejonghe.common.dbservices.ProductService;
 import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.enums.product.VAT;
 import com.adverto.dejonghe.common.entities.enums.workorder.Tools;
 import com.adverto.dejonghe.common.entities.product.product.Product;
+import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.dialog.Dialog;
@@ -58,6 +58,19 @@ public class ToolsWorkhoursView extends VerticalLayout {
         horizontalLayout.setSpacing(true);
         TextField tfWorkhours = new TextField();
         tfWorkhours.setSuffixComponent(new Span("Minuten"));
+        tfWorkhours.addValueChangeListener(event -> {
+            String value = event.getValue();
+
+            if (value == null || value.isBlank()) {
+                amountWorkhours = 0;
+                return;
+            }
+            try {
+                amountWorkhours = Integer.parseInt(value.replace(",", "."));
+            } catch (NumberFormatException e) {
+                amountWorkhours = 0;
+            }
+        });
         Button minusButton = new Button(VaadinIcon.MINUS.create());
         minusButton.addClickListener(buttonClickEvent ->{
             amountWorkhours = amountWorkhours-15;

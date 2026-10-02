@@ -289,10 +289,11 @@ public class SearchWorkOrder extends Div implements BeforeEnterObserver {
         headerSplitLayout.setSplitterPosition(50);
         headerSplitLayout.setSizeFull();
         headerSplitLayout.setOrientation(SplitLayout.Orientation.VERTICAL);
+        headerSplitLayout.getElement()
+                .addEventListener("splitter-dragend", event -> {
+                    selectProductSubView.setSplitPosition(headerSplitLayout.getSplitterPosition());
+                });
 
-        headerSplitLayout.addSplitterDragendListener(event -> {
-            selectProductSubView.setSplitPosition(headerSplitLayout.getSplitterPosition());
-        });
     }
 
     private FormLayout getWorkOrderHeader() {

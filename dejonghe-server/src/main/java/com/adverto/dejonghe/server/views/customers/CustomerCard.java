@@ -110,11 +110,20 @@ public class CustomerCard extends Card {
     private Component checkIfThereAreUnpayedExpiredBills() {
         List<Invoice> unpayedExpiredInvoices = invoiceService.getUnpayedExpiredInvoices(customer.getId(), LocalDate.now());
         if((unpayedExpiredInvoices != null) && (!unpayedExpiredInvoices.isEmpty())) {
-            double totalUnpayedExpired = unpayedExpiredInvoices.stream().filter(invoice -> invoice.getBFinalInvoice() == true)
-                    .filter(x -> x.getBFinalInvoice() == true)
+            double totalUnpayedExpired = unpayedExpiredInvoices.stream()
+
+                    .filter(invoice -> Boolean.TRUE.equals(invoice.getBFinalInvoice()))
+
                     .flatMap(invoice -> invoice.getProductList().stream())
+
+                    .filter(product ->
+                            product.getMergedProduct() == null
+                                    || !product.getMergedProduct()
+                    )
+
                     .map(Product::getTotalPrice)
                     .filter(Objects::nonNull)
+
                     .mapToDouble(Double::doubleValue)
                     .sum();
 
@@ -126,21 +135,37 @@ public class CustomerCard extends Card {
 
                 RouterLink link = new RouterLink();
                 link.getStyle().set("color", "red");
-                link.setText(
-                        unpayedExpiredInvoices.stream().filter(x -> x.getBFinalInvoice() == true).collect(Collectors.toList()).size() +
-                                " vervallen factur(en) : (" +
-                                df.format(totalUnpayedExpired) +
-                                " € excl BTW)." +
-                        " Waarvan betaald : " + unpayedExpiredInvoices.stream()
-                                .flatMap(invoice ->
-                                        Optional.ofNullable(invoice.getPaymentList())
-                                                .orElse(Collections.emptyList())
-                                                .stream())
-                                .map(Payment::getPaymentAmount)
-                                .filter(Objects::nonNull)
-                                .mapToDouble(Double::doubleValue)
-                                .sum() + " €"
-                );
+                link.getStyle()
+                        .set("min-width", "0")
+                        .set("flex-shrink", "1");
+
+                long expiredInvoiceCount = unpayedExpiredInvoices.stream()
+                        .filter(x -> Boolean.TRUE.equals(x.getBFinalInvoice()))
+                        .count();
+
+                double paidAmount = unpayedExpiredInvoices.stream()
+                        .flatMap(invoice ->
+                                Optional.ofNullable(invoice.getPaymentList())
+                                        .orElse(Collections.emptyList())
+                                        .stream())
+                        .map(Payment::getPaymentAmount)
+                        .filter(Objects::nonNull)
+                        .mapToDouble(Double::doubleValue)
+                        .sum();
+
+                String text =
+                        expiredInvoiceCount
+                                + " vervallen factur(en) : ("
+                                + df.format(totalUnpayedExpired)
+                                + " € excl BTW).";
+
+                if (paidAmount > 0.0) {
+                    text += " Waarvan betaald : "
+                            + df.format(paidAmount)
+                            + " €";
+                }
+
+                link.setText(text);
 
                 link.setRoute(FinalInvoiceView.class);
                 link.setQueryParameters(new QueryParameters(params));
@@ -172,7 +197,7 @@ public class CustomerCard extends Card {
             UI.getCurrent().navigate(
                     CustomerView.class, customer.getId());
         });
-        this.setTitle(title);
+        this.add(title);
 
         Div subtitle = new Div(new Text(customer.getVatNumber()));
         subtitle.addClassName("card-subtitle");
@@ -211,6 +236,8 @@ public class CustomerCard extends Card {
         //actionBarLayout.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
         actionBar = new MenuBar();
         actionBar.addClassName("large-menubar");
+        actionBar.getStyle()
+                .set("flex-shrink", "0");
         actionBar.addThemeVariants(MenuBarVariant.LUMO_DROPDOWN_INDICATORS);
         MenuItem actie = actionBar.addItem("Actie");
         actie.getElement().getClassList().add("menu-as-button");

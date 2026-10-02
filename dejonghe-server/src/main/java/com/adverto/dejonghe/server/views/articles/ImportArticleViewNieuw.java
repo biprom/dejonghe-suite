@@ -3,6 +3,7 @@ package com.adverto.dejonghe.server.views.articles;
 import com.adverto.dejonghe.common.dbservices.*;
 import com.adverto.dejonghe.common.entities.product.product.*;
 import com.adverto.dejonghe.common.services.SetService;
+import com.adverto.dejonghe.common.wizard.WIZARD;
 import com.adverto.dejonghe.server.views.subViews.*;
 import com.adverto.dejonghe.common.entities.enums.employee.UserFunction;
 import com.adverto.dejonghe.common.entities.product.enums.E_Product_Level;
@@ -64,8 +65,8 @@ import static com.vaadin.flow.component.button.ButtonVariant.LUMO_TERTIARY_INLIN
 @Menu(order = 0, icon = LineAwesomeIconUrl.COG_SOLID)
 public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnterObserver {
 
-    private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("/Users/bramvandenberghe/Desktop/dejonghe.xlsx");
-    //private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("D:\\Algemeen\\Documentatie\\Dejonghe-techniek\\Database\\dejonghe.xlsx\\dejonghe.xlsx");
+    //private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("/Users/bramvandenberghe/Desktop/dejonghe.xlsx");
+    private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("D:\\Algemeen\\Documentatie\\Dejonghe-techniek\\Database\\dejonghe.xlsx\\dejonghe.xlsx");
 
     Notification deleteProductNotification;
 
@@ -128,6 +129,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     private TextField tfComment;
     private TextField tfMoQ;
     private TextField tfUnit;
+    private ComboBox<WIZARD>cbWizard;
 
     private TextField tfPurchasePrice;
     private TextField tfSellMargin;
@@ -162,6 +164,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     Grid.Column commentColumn;
     Grid.Column moqColumn;
     Grid.Column unitColumn;
+    Grid.Column wizardColumn;
 
     Grid.Column<PurchasePrice> purchaseDateColumn;
 
@@ -358,7 +361,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                     editor.closeEditor();
 
                     //add Purchase Items to this Product if they exist
-                    if((selectedProduct.getPurchasePriseList() == null)||(selectedProduct.getPurchasePriseList().isEmpty())) {
+                    if((selectedProduct.getPurchasePriseList() == null)||(selectedProduct.getPurchasePriseList().isEmpty())||(selectedProduct.getPurchasePriseList().getFirst()).getPrice() == null) {
                         byProductCodeContaining = productService.findByProductCodeContaining(tfProductCode.getValue());
                         if((!byProductCodeContaining.isEmpty()) && (byProductCodeContaining.get().size() > 0)) {
                             selectedProduct.setPurchasePriseList(byProductCodeContaining.get().getFirst().getPurchasePriseList());
@@ -761,9 +764,9 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         purchasePriceGrid.removeAllColumns();
         purchaseDateColumn = purchasePriceGrid.addComponentColumn(item -> {
                     DatePicker datePicker = new DatePicker();
-                    UI.getCurrent().getPage().executeJs(
-                            "const dp = $0; dp.i18n = Object.assign(dp.i18n, {firstDayOfWeek: 1});",
-                            datePicker.getElement()
+                    datePicker.setI18n(
+                            new DatePicker.DatePickerI18n()
+                                    .setFirstDayOfWeek(1)
                     );
                     datePicker.setLocale(new Locale("nl", "BE"));
 
@@ -1881,6 +1884,9 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 .withNullRepresentation("")
                 .bind(Product::getUnit, Product::setUnit);
         unitColumn.setEditorComponent(tfUnit);
+        productBinder.forField(cbWizard)
+                .bind(Product::getWizard, Product::setWizard);
+        wizardColumn.setEditorComponent(cbWizard);
 //        productBinder.forField(cbProductLevel1)
 //                        .bind(Product::getProductLevel1, Product::setProductLevel1);
 //        productBinder.forField(cbProductLevel2)
@@ -2130,7 +2136,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 return "-";
             }
         }).setHeader("Marge I").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
-        marginIndustryColumn.setClassNameGenerator(item -> "industry-column");
+        //marginIndustryColumn.setClassNameGenerator(item -> "industry-column");
 
         purchaceColumn = grid.addColumn(item -> {
             if(item.getPurchasePrice() != null){
@@ -2159,28 +2165,55 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 return "";
             }
         }).setHeader("E/H.").setResizable(true).setWidth("80px").setFlexGrow(0).setFrozenToEnd(true);
+        wizardColumn = grid.addColumn(item -> {
+            if(item.getWizard() != null){
+                return item.getWizard().getDescription();
+            }
+            else{
+                return "";
+            }
+        }).setHeader("Wizard").setResizable(true).setWidth("190px").setFlexGrow(0).setFrozenToEnd(true);
 
         grid.setPartNameGenerator(product -> {
             return "industry";
         });
 
-        //when a row is selected or deselected, populate form
+
         grid.addItemClickListener(event -> {
 
-            //if selectionColumn is aangeklikt -> don't trigger event!
-            if(event.getColumn() == null){
+            // selectionColumn aangeklikt -> eventueel aparte verwerking
+            if (event.getColumn() == null) {
                 return;
             }
 
-           editor.cancel();
-           editor.closeEditor();
+            editor.cancel();
+            editor.closeEditor();
 
-           selectedProduct = event.getItem();
-           grid.deselectAll();
-           grid.select(selectedProduct);
-           var value = event.getItem();
+            var clickedItem = event.getItem();
 
-            if (value != null) {
+            if (clickedItem == null) {
+                return;
+            }
+
+            boolean alreadySelected =
+                    grid.getSelectedItems().contains(clickedItem);
+
+            if (alreadySelected) {
+
+                grid.deselect(clickedItem);
+                selectedProduct = null;
+
+            } else {
+
+                grid.deselectAll();
+                grid.select(clickedItem);
+
+                selectedProduct = clickedItem;
+            }
+
+            var value = event.getItem();
+
+            if (value != null && !alreadySelected) {
                 updating.set(true);
                 if (value.getProductLevel1() != null){
                     if((cbProductLevel1.getValue() == null)){
@@ -2332,48 +2365,67 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
 
 
     private int compareOnderdeel(String s1, String s2) {
-        if((s1 != null) && (s2 != null)){
-            List<Object> parts1 = splitAlphaNumeric(s1);
-            List<Object> parts2 = splitAlphaNumeric(s2);
 
-            int len = Math.min(parts1.size(), parts2.size());
+        if (s1 == null && s2 == null) return 0;
+        if (s1 == null) return 1;
+        if (s2 == null) return -1;
 
-            for (int i = 0; i < len; i++) {
-                Object p1 = parts1.get(i);
-                Object p2 = parts2.get(i);
+        List<Object> parts1 = splitAlphaNumeric(s1);
+        List<Object> parts2 = splitAlphaNumeric(s2);
 
-                int cmp;
-                if (p1 instanceof String && p2 instanceof String) {
-                    cmp = ((String) p1).compareToIgnoreCase((String) p2);
-                } else if (p1 instanceof Number && p2 instanceof Number) {
-                    cmp = Double.compare(((Number) p1).doubleValue(), ((Number) p2).doubleValue());
-                } else {
-                    // String vs Number → String komt altijd eerst
-                    cmp = (p1 instanceof String) ? -1 : 1;
-                }
+        int len = Math.min(parts1.size(), parts2.size());
 
-                if (cmp != 0) return cmp;
+        for (int i = 0; i < len; i++) {
+            Object p1 = parts1.get(i);
+            Object p2 = parts2.get(i);
+
+            int cmp;
+
+            if (p1 instanceof String && p2 instanceof String) {
+
+                cmp = ((String) p1)
+                        .compareToIgnoreCase((String) p2);
+
+            } else if (p1 instanceof Number && p2 instanceof Number) {
+
+                cmp = Double.compare(
+                        ((Number) p1).doubleValue(),
+                        ((Number) p2).doubleValue()
+                );
+
+            } else {
+                // Getallen komen vóór letters
+                cmp = (p1 instanceof Number) ? -1 : 1;
             }
 
-            // Als alles gelijk is, kortere string komt eerst
-            return Integer.compare(parts1.size(), parts2.size());
+            if (cmp != 0) {
+                return cmp;
+            }
         }
-        return 9999;
+
+        return Integer.compare(parts1.size(), parts2.size());
     }
 
     private List<Object> splitAlphaNumeric(String input) {
+
         List<Object> parts = new ArrayList<>();
 
-        Matcher matcher = Pattern.compile("(\\d+[\\.,]?\\d*|\\D+)").matcher(input);
+        Matcher matcher = Pattern
+                .compile("\\d+(?:,\\d+)?|[A-Za-z]+")
+                .matcher(input);
+
         while (matcher.find()) {
-            String part = matcher.group(1).trim();
-            if (part.matches("\\d+[\\.,]?\\d*")) {
-                part = part.replace(",", "."); // vervang komma door punt
-                try {
-                    parts.add(Double.parseDouble(part));
-                } catch (NumberFormatException e) {
-                    parts.add(part); // fallback: behandel als string
-                }
+
+            String part = matcher.group();
+
+            if (part.matches("\\d+(?:,\\d+)?")) {
+
+                parts.add(
+                        Double.parseDouble(
+                                part.replace(",", ".")
+                        )
+                );
+
             } else {
                 parts.add(part);
             }
@@ -2426,6 +2478,11 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         tfComment = new TextField("Commentaar");
         tfMoQ = new TextField("MoQ");
         tfUnit = new TextField("Eenheid");
+        cbWizard = new ComboBox<>();
+        cbWizard.setLabel("Wizard");
+        cbWizard.setItems(WIZARD.values());
+        cbWizard.setItemLabelGenerator(WIZARD::getDescription);
+        cbWizard.setClearButtonVisible(true);
         cbProductLevel1 = new ComboBox("");
         cbProductLevel1.setWidth("100%");
         cbProductLevel2 = new ComboBox("");

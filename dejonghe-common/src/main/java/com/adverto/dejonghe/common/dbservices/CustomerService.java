@@ -72,7 +72,6 @@ public class CustomerService {
                     }
                     addressList.add(address);
                 }
-
             }
             return Optional.of(addressList);
         }

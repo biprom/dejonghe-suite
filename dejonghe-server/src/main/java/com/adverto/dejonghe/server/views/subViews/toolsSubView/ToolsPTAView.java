@@ -1,11 +1,11 @@
 package com.adverto.dejonghe.server.views.subViews.toolsSubView;
 
-import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.adverto.dejonghe.common.dbservices.ProductService;
 import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.enums.workorder.Tools;
 import com.adverto.dejonghe.common.entities.enums.workorder.ToolsPTAOptions;
 import com.adverto.dejonghe.common.entities.product.product.Product;
+import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
@@ -36,7 +36,7 @@ public class ToolsPTAView extends VerticalLayout {
     H3 title;
     Tools selectedTool;
     List<Product> selectedProducts;
-    Integer amountOfKg = 100;
+    Double amountOfKg = 0.1;
     ComboBox<Product>cbPowderType;
     RadioButtonGroup<String> radioGroup;
     TextField tfAmount;
@@ -88,19 +88,34 @@ public class ToolsPTAView extends VerticalLayout {
         cbPowderType.setItemLabelGenerator(x -> x.getInternalName());
 
         tfAmount = new TextField();
-        tfAmount.setSuffixComponent(new Span("Aantal gram"));
+        tfAmount.setSuffixComponent(new Span("Aantal kg"));
+        tfAmount.addValueChangeListener(event -> {
+            String value = event.getValue();
+
+            if (value == null || value.isBlank()) {
+                amountOfKg = 0.0;
+                return;
+            }
+
+            try {
+                amountOfKg = Double.parseDouble(value.replace(",", "."));
+            } catch (NumberFormatException e) {
+                // Invalid
+                amountOfKg = 0.0;
+            }
+        });
         Button minusButton = new Button(VaadinIcon.MINUS.create());
         minusButton.addClickListener(buttonClickEvent ->{
-            amountOfKg = amountOfKg-100;
+            amountOfKg = Math.round((amountOfKg - 0.1) * 10.0) / 10.0;
             tfAmount.setValue(amountOfKg.toString());
             if(amountOfKg < 0){
-                amountOfKg = 0;
+                amountOfKg = 0.0;
                 tfAmount.setValue("0");
             }
                 });
         Button plusButton = new Button(VaadinIcon.PLUS.create());
         plusButton.addClickListener(buttonClickEvent ->{
-            amountOfKg = amountOfKg+100;
+            amountOfKg = Math.round((amountOfKg + 0.1) * 10.0) / 10.0;
             tfAmount.setValue(amountOfKg.toString());
         });
         tfAmount.setValue(amountOfKg.toString());
@@ -133,27 +148,29 @@ public class ToolsPTAView extends VerticalLayout {
             Product productToAdd2 = productService.findByProductCodeContaining(cbPowderType.getValue().getProductCode()).get().get(0);
             productToAdd2.setAbbreviation(selectedTool.getAbbreviation());
             productToAdd2.setTeamNumber(selectedTeam);
-            productToAdd2.setSelectedAmount(Double.valueOf(amountOfKg));
+            productToAdd2.setSelectedAmount(amountOfKg);
             if(!bAgro) {
-                if(productToAdd.getSellPriceIndustry() == 0.0){
-                    productToAdd2.setTotalPrice(Double.valueOf(amountOfKg) * productToAdd2.getSellPrice());
+                if(productToAdd2.getSellPriceIndustry() == 0.0){
+                    productToAdd2.setTotalPrice(amountOfKg * productToAdd2.getSellPrice());
                 }
                 else{
-                    productToAdd2.setTotalPrice(Double.valueOf(amountOfKg) * productToAdd2.getSellPriceIndustry());
+                    productToAdd2.setTotalPrice(amountOfKg * productToAdd2.getSellPriceIndustry());
                 }
             }
             else{
-                productToAdd2.setTotalPrice(Double.valueOf(amountOfKg) * productToAdd2.getSellPrice());
+                productToAdd2.setTotalPrice(amountOfKg * productToAdd2.getSellPrice());
             }
-            productToAdd2.setInternalName("Aantal gram : " + cbPowderType.getValue().getComment());
+            productToAdd2.setInternalName("Aantal kg : " + cbPowderType.getValue().getComment());
 
             Product totalProduct = new Product();
             totalProduct.setAbbreviation(selectedTool.getAbbreviation());
             totalProduct.setTeamNumber(selectedTeam);
-            totalProduct.setInternalName("Gebruik PTA + oplaspoeder");
+            totalProduct.setInternalName(productToAdd.getInternalName());
             totalProduct.setSelectedAmount(1.0);
             try{
-                totalProduct.setTotalPrice(Double.valueOf(productToAdd.getSellPrice() + (productToAdd2.getSelectedAmount() * productToAdd2.getSellPrice())));
+                totalProduct.setSellPrice(Double.valueOf(productToAdd.getSellPrice() + (productToAdd2.getTotalPrice())));
+                totalProduct.setSellPriceIndustry(Double.valueOf(productToAdd.getSellPrice() + (productToAdd2.getTotalPrice())));
+                totalProduct.setTotalPrice(Double.valueOf(productToAdd.getSellPrice() + (productToAdd2.getTotalPrice())));
             }
             catch (Exception ex){
                 totalProduct.setSellPrice(0.0);
@@ -168,8 +185,6 @@ public class ToolsPTAView extends VerticalLayout {
                     dialog.close();
                 }
             });
-
-
         });
     }
 
@@ -178,7 +193,7 @@ public class ToolsPTAView extends VerticalLayout {
     }
 
     public void setSelectedToolTeam(Tools selectedTool, Integer selectedTeam) {
-        amountOfKg = 100;
+        amountOfKg = 0.1;
         tfAmount.setValue(amountOfKg.toString());
         title.setText(selectedTool.getDiscription());
         this.selectedTool = selectedTool;

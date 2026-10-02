@@ -114,4 +114,8 @@ public class WorkOrderService {
     public Optional<WorkOrder> getWorkOrderByWorkDateTime(LocalDateTime workDateTime) {
         return Optional.of(workOrderRepo.findWorkOrderByWorkDateTime(workDateTime));
     }
+
+    public Optional<List<WorkOrder>>getAllWorkOrdersByaddressNameandNoEmptyImageList(String addressName, Boolean starter){
+        return workOrderRepo.findByWorkAddress_AddressNameAndImageListIsNotEmpty(addressName, starter);
+    }
 }

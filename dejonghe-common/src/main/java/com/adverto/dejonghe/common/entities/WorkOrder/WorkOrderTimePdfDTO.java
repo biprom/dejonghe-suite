@@ -13,7 +13,9 @@ import java.time.LocalTime;
 @Setter
 @NoArgsConstructor
 public class WorkOrderTimePdfDTO {
+    String departure;
     String start;
     String pause;
     String End;
+    String back;
 }

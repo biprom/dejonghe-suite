@@ -14,6 +14,7 @@ import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.virtuallist.VirtualList;
 import com.vaadin.flow.data.renderer.ComponentRenderer;
 import com.vaadin.flow.router.*;
+import jakarta.annotation.PostConstruct;
 import org.vaadin.lineawesome.LineAwesomeIconUrl;
 
 import java.util.ArrayList;
@@ -39,7 +40,7 @@ public class CustomerDashboardView extends VerticalLayout implements BeforeEnter
 
         this.customerService = customerService;
         this.invoiceService = invoiceService;
-
+        
         getAllCustomers();
 
         this.setSizeFull();

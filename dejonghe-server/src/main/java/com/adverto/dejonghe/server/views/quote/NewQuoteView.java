@@ -35,6 +35,7 @@ import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
 import com.vaadin.flow.component.splitlayout.SplitLayout;
 import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.component.textfield.TextField;
@@ -471,6 +472,7 @@ public class NewQuoteView extends VerticalLayout implements HasUrlParameter<Stri
         else{
             Notification.show("Geen Klanten in de database");
         }
+        addressComboBox.setAllowCustomValue(true);
         addressComboBox.setPlaceholder("Gelieve een klant/adres te selecteren");
         addressComboBox.setItemLabelGenerator(address -> {
             if((address.getAddressName() != null) && (address.getAddressName().length() > 0)) {
@@ -535,6 +537,78 @@ public class NewQuoteView extends VerticalLayout implements HasUrlParameter<Stri
                 customerCard.setHeaderSuffix(badge);
             }
         });
+
+        addressComboBox.addCustomValueSetListener(event -> {
+
+            String customerName = event.getDetail().trim();
+
+            if (customerName.isEmpty()) {
+                return;
+            }
+
+            Dialog dialog = new Dialog();
+            dialog.setHeaderTitle("Klanttype");
+
+            RadioButtonGroup<String> customerType = new RadioButtonGroup<>();
+            customerType.setLabel("Type klant");
+            customerType.setItems("Agro", "Industrie");
+
+            Button cancelButton = new Button("Annuleren", e -> dialog.close());
+
+            Button saveButton = new Button("Aanmaken", e -> {
+
+                if (customerType.getValue() == null) {
+                    customerType.setInvalid(true);
+                    customerType.setErrorMessage("Kies Agro of Industrie");
+                    return;
+                }
+
+                 Customer customer = new Customer();
+
+                    customer.setName(customerName);
+                    Address invoiceAddress = new Address();
+                    invoiceAddress.setAddressName(customerName);
+                    invoiceAddress.setInvoiceAddress(true);
+                    Address workAddress = new Address();
+                    workAddress.setAddressName(customerName);
+                    workAddress.setInvoiceAddress(false);
+                    customer.setAddresses(new ArrayList<>(List.of(invoiceAddress, workAddress)));
+
+                    if ("Agro".equals(customerType.getValue())) {
+                        customer.setBAgro(true);
+                        customer.setBIndustry(false);
+                    } else {
+                        customer.setBAgro(false);
+                        customer.setBIndustry(true);
+                    }
+
+                    customerService.save(customer);
+
+                    allCustomerAddresses = customerService.getAllCustomerAdresses();
+                    addressComboBox.setItems(allCustomerAddresses.get());
+
+                    Optional<List<Customer>> customerToSelect = customerService.getCustomerByWorkAddressName(customerName);
+                    if((customerToSelect.get() != null) && (customerToSelect.get().size() > 0)){
+                        addressComboBox.setValue(customerToSelect.get().getFirst().getAddresses().stream().filter(address -> address.getInvoiceAddress() == false).findFirst().get());
+                        selectedCustomer = customerToSelect.get().getFirst();
+                        selectProductSubView.setSelectedCustmer(selectedCustomer);
+                    }
+                    else{
+                        Notification.show("Deze klant kan niet worden getoond of er zijn meerdere klanten onder deze naam");
+                    }
+
+                dialog.close();
+            });
+
+            dialog.add(customerType);
+
+            dialog.getFooter().add(cancelButton, saveButton);
+
+            dialog.open();
+
+        });
+
+
         addressComboBox.setWidthFull();
         return addressComboBox;
     }

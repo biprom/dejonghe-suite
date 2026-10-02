@@ -1,6 +1,7 @@
 package com.adverto.dejonghe.common.entities.product.product;
 
 import com.adverto.dejonghe.common.entities.enums.product.VAT;
+import com.adverto.dejonghe.common.wizard.WIZARD;
 import jakarta.persistence.Id;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -61,8 +62,10 @@ public class Product implements Serializable {
     private Boolean bAttachement = false;
     private LocalDate attachementNumber;
 
-    //for making a merged products (total product for a couple products)
+    //for making a merged product (total product for a couple products)
     private Boolean mergedProduct = false;
+    //for making a merged invisible product on a PDF (total product for a couple products)
+    private Boolean mergedInvisibleProduct = Boolean.FALSE;
     List<Product>mergedProducts;
 
     private Boolean remark = false;
@@ -71,6 +74,7 @@ public class Product implements Serializable {
     List<String>pdfList;
     List<ProductLink>linkDocumentList;
     boolean boldMode = false;
+    private WIZARD wizard;
     @Transient
     boolean selectedMode = false;
     boolean noRecentPriceApproved = false;

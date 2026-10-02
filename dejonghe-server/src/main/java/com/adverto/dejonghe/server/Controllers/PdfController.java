@@ -28,18 +28,20 @@ public class PdfController {
 
     @Value( "${rootFolder}" )
     private String rootFolder;
-    @Autowired
-    WorkOrderPdfServices workOrderPdfServices;
+
     @Autowired
     WorkOrderService workOrderService;
 
+    @Autowired
+    private WorkOrderPdfServices workOrderPdfServices;
+
     private String pdfNaam;
 
-
+    //for workorders
     @GetMapping("/pdf/workorder/{workOrderId}")
     public ResponseEntity<Resource> getWorkOrderPdf(
-            @PathVariable String workOrderId
-    ) {
+            @PathVariable String workOrderId) {
+
         Optional<WorkOrder> optionalWorkOrder =
                 workOrderService.getWorkOrderById(workOrderId);
 
@@ -48,30 +50,58 @@ public class PdfController {
         }
 
         try {
-            String pdfNaam = workOrderPdfServices
-                    .generateWorkOrderPDF(optionalWorkOrder.get());
+            String pdfNaam =
+                    workOrderPdfServices.generateWorkOrderPDF(optionalWorkOrder.get());
 
-            Path rootPath = Paths.get(rootFolder)
-                    .toAbsolutePath()
-                    .normalize();
-
+            Path rootPath = Paths.get(rootFolder).toAbsolutePath().normalize();
             Path pdfPath = rootPath.resolve(pdfNaam).normalize();
 
             if (!pdfPath.startsWith(rootPath) || !Files.exists(pdfPath)) {
                 return ResponseEntity.notFound().build();
             }
 
-            Resource resource = new InputStreamResource(
-                    Files.newInputStream(pdfPath)
-            );
+            Resource resource = new InputStreamResource(Files.newInputStream(pdfPath));
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "inline; filename=\"" + pdfPath.getFileName() + "\"")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .contentLength(Files.size(pdfPath))
+                    .body(resource);
+
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    //for invoices
+    @GetMapping("/pdf/invoice/{id}")
+    public ResponseEntity<Resource> getPdf(@PathVariable String id) {
+        try {
+            Path rootPath = Paths.get(rootFolder).toAbsolutePath().normalize();
+            Path pdfPath = rootPath.resolve(pdfNaam).normalize();
+
+            // Voorkomt toegang tot bestanden buiten rootFolder
+            if (!pdfPath.startsWith(rootPath)) {
+                return ResponseEntity.badRequest().build();
+            }
+
+            File file = pdfPath.toFile();
+
+            if (!file.exists() || !file.isFile()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            InputStreamResource resource =
+                    new InputStreamResource(new FileInputStream(file));
 
             return ResponseEntity.ok()
                     .header(
                             HttpHeaders.CONTENT_DISPOSITION,
-                            "inline; filename=\"" + pdfPath.getFileName() + "\""
+                            "inline; filename=\"" + file.getName() + "\""
                     )
                     .contentType(MediaType.APPLICATION_PDF)
-                    .contentLength(Files.size(pdfPath))
+                    .contentLength(file.length())
                     .body(resource);
 
         } catch (IOException e) {
@@ -81,6 +111,7 @@ public class PdfController {
         }
     }
 
+    //for attachements for invoices
     @GetMapping("/attachement")
     public ResponseEntity<Resource> getAttachement() {
         try {

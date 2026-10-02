@@ -137,7 +137,7 @@ public class ProductImplementation implements JRDataSource {
             }
             if(products.get(lastFiledAdded).getSelectedAmount() != null){
                 if(!products.get(lastFiledAdded).getSelectedAmount().equals(0.0)){
-                    if(selectedCustomer.getVatNumber().contains("BE")){
+                    if((selectedCustomer.getVatNumber() != null) && (selectedCustomer.getVatNumber().contains("BE"))){
                         return products.get(lastFiledAdded).getVat().getDiscription();
                     }
                     else{
@@ -162,6 +162,14 @@ public class ProductImplementation implements JRDataSource {
                 }
             }
             else {
+                return null;
+            }
+        }
+        else if (jrField.getName().equals("Code")) {
+            if(products.get(lastFiledAdded).getProductCode() != null) {
+                return products.get(lastFiledAdded).getProductCode();
+            }
+            else{
                 return null;
             }
         }

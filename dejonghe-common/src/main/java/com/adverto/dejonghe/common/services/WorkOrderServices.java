@@ -1,47 +1,128 @@
 package com.adverto.dejonghe.common.services;
 
+import com.adverto.dejonghe.common.dbservices.WorkOrderService;
 import com.adverto.dejonghe.common.entities.WorkOrder.*;
 import com.adverto.dejonghe.common.entities.enums.fleet.Fleet;
 import com.adverto.dejonghe.common.entities.enums.fleet.FleetWorkType;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkLocation;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkType;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayOutputStream;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
 public class WorkOrderServices {
-
+    WorkOrderService workOrderService;
     List<String>errorList;
 
-    public WorkOrderServices() {
-
+    public WorkOrderServices(WorkOrderService workOrderService) {
+        this.workOrderService = workOrderService;
     }
-    
-    public List<String> checkWorkOrderBeforeSendToInvoice(WorkOrder workOrder, List<String>errorList){
+    public List<String> checkWorkOrderBeforeSendToInvoice(
+            WorkOrder workOrder,
+            List<String> errorList) {
 
         this.errorList = errorList;
-
         errorList.clear();
+
+        Set<String> checkedWorkOrders = new HashSet<>();
+
+        checkWorkOrderAndLinked(workOrder, checkedWorkOrders);
+
+        return errorList;
+    }
+
+    private void checkWorkOrderAndLinked(
+            WorkOrder workOrder,
+            Set<String> checkedWorkOrders) {
+
+        if (workOrder == null) {
+            return;
+        }
+
+        if (workOrder.getId() != null
+                && !checkedWorkOrders.add(workOrder.getId())) {
+            return;
+        }
+
+        checkSingleWorkOrder(workOrder);
+
+        if (workOrder.getLinkedWorkOrders() != null) {
+
+            for (String linkedWorkOrderId : workOrder.getLinkedWorkOrders()) {
+
+                if (linkedWorkOrderId == null
+                        || linkedWorkOrderId.isBlank()) {
+                    continue;
+                }
+
+                Optional<WorkOrder> linkedWorkOrder =
+                        workOrderService.getWorkOrderById(linkedWorkOrderId);
+
+                if (linkedWorkOrder != null) {
+                    checkWorkOrderAndLinked(
+                            linkedWorkOrder.get(),
+                            checkedWorkOrders
+                    );
+                }
+            }
+        }
+    }
+
+    private void checkSingleWorkOrder(WorkOrder workOrder) {
+
+        String workOrderInfo =
+                "Werkbon " + workOrder.getWorkDateTime().format(DateTimeFormatter.ofPattern("dd/MM"));
 
         checkWorkOrder(workOrder);
 
-        if(workOrder.getMasterEmployeeTeam1() != null){
-            checkHeader("Team 1", workOrder.getWorkLocation(), workOrder.getWorkOrderHeaderList().get(0));
+        List<WorkOrderHeader> headers =
+                workOrder.getWorkOrderHeaderList();
+
+        if (headers == null) {
+            return;
         }
-        if(workOrder.getMasterEmployeeTeam2() != null){
-            checkHeader("Team 2", workOrder.getWorkLocation(),workOrder.getWorkOrderHeaderList().get(1));
+
+        if (workOrder.getMasterEmployeeTeam1() != null
+                && headers.size() > 0) {
+
+            checkHeader(
+                    workOrderInfo + " - Team 1",
+                    workOrder.getWorkLocation(),
+                    headers.get(0)
+            );
         }
-        if(workOrder.getMasterEmployeeTeam3() != null){
-            checkHeader("Team 3", workOrder.getWorkLocation(),workOrder.getWorkOrderHeaderList().get(2));
+
+        if (workOrder.getMasterEmployeeTeam2() != null
+                && headers.size() > 1) {
+
+            checkHeader(
+                    workOrderInfo + " - Team 2",
+                    workOrder.getWorkLocation(),
+                    headers.get(1)
+            );
         }
-        if(workOrder.getMasterEmployeeTeam4() != null){
-            checkHeader("Team 4", workOrder.getWorkLocation(),workOrder.getWorkOrderHeaderList().get(3));
+
+        if (workOrder.getMasterEmployeeTeam3() != null
+                && headers.size() > 2) {
+
+            checkHeader(
+                    workOrderInfo + " - Team 3",
+                    workOrder.getWorkLocation(),
+                    headers.get(2)
+            );
         }
-        return errorList;
+
+        if (workOrder.getMasterEmployeeTeam4() != null
+                && headers.size() > 3) {
+
+            checkHeader(
+                    workOrderInfo + " - Team 4",
+                    workOrder.getWorkLocation(),
+                    headers.get(3)
+            );
+        }
     }
 
     private void checkWorkOrder(WorkOrder workOrder) {
@@ -54,6 +135,9 @@ public class WorkOrderServices {
         if(workOrder.getWorkLocation() == null){
             errorList.add("Locatie is niet ingevuld!");
         }
+        if(workOrder.getMasterEmployeeTeam1() == null){
+            errorList.add("Team1 is niet ingevuld!");
+        }
     }
 
     private void checkHeader(String teamNumber, WorkLocation workLocation, WorkOrderHeader workOrderHeader) {
@@ -61,6 +145,7 @@ public class WorkOrderServices {
         if(workOrderHeader.getWorkType() == null){
             errorList.add(teamNumber + " Type Werk is niet ingevuld!");
         }
+
         if(workOrderHeader.getWorkType().equals(WorkType.CENTRIFUGE)){
             if((workOrderHeader.getBowlEntityList() != null) && (workOrderHeader.getBowlEntityList().size() > 0)){
                 for(BowlEntity bowlEntity : workOrderHeader.getBowlEntityList()){
@@ -104,6 +189,9 @@ public class WorkOrderServices {
             }
             else{
                 errorList.add(teamNumber + " : " +" Werkuren zijn niet ingevuld!");
+            }
+            if(workOrderHeader.getFleet() == null){
+                errorList.add(teamNumber + " : " +" Voertuig is niet ingevuld!");
             }
         }
         else{

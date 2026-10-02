@@ -114,6 +114,7 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
 
     private boolean sidebarCollapsed;
     Button slideButton;
+    Button goBackButton;
     Icon leftArrowIcon;
     Icon rightArrowIcon;
 
@@ -270,10 +271,19 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
                 ButtonVariant.LUMO_WARNING);
         openWorkOrdersButton.addClickListener(e -> {
             if(selectedInvoice.getWorkOrderList() != null && selectedInvoice.getWorkOrderList().size() > 0){
-                for(WorkOrder workOrder : selectedInvoice.getWorkOrderList()){
-                    UI.getCurrent()
-                            .getPage()
-                            .open("/pdf/workorder/" + workOrder.getId(), "_blank");
+                int delay = 0;
+
+                for (WorkOrder workOrder : selectedInvoice.getWorkOrderList()) {
+
+                    String url = "/pdf/workorder/" + workOrder.getId();
+
+                    UI.getCurrent().getPage().executeJs(
+                            "setTimeout(() => window.open($0, '_blank'), $1)",
+                            url,
+                            delay
+                    );
+
+                    delay += 1000;
                 }
             }
             else{
@@ -486,7 +496,7 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
     private VerticalLayout getFirstStepHeader() {
         vLayoutFirstStepHeader = new VerticalLayout();
         vLayoutFirstStepHeader.setSizeFull();
-        vLayoutFirstStepHeader.add(slideButton);
+        vLayoutFirstStepHeader.add(new HorizontalLayout(goBackButton,slideButton));
         vLayoutFirstStepHeader.add(getAddressComboBox());
         vLayoutFirstStepHeader.add(getProjectCustomerComboBox());
         vLayoutFirstStepHeader.add(getCustomerCard());
@@ -764,6 +774,11 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
         rightArrowIcon = VaadinIcon.ARROW_RIGHT.create();
 
         sidebarCollapsed = true;
+
+        goBackButton = new Button(VaadinIcon.BACKWARDS.create());
+        goBackButton.addClickListener(e -> {
+            UI.getCurrent().getPage().getHistory().back();
+        });
 
         slideButton.addClickListener(event -> {
             sidebarCollapsed = !sidebarCollapsed;

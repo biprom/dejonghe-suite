@@ -1,15 +1,14 @@
 package com.adverto.dejonghe.server.views.subViews.toolsSubView;
 
-import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.adverto.dejonghe.common.dbservices.ProductService;
 import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.enums.workorder.Tools;
 import com.adverto.dejonghe.common.entities.product.product.Product;
+import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.html.H3;
-import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
@@ -38,7 +37,7 @@ public class ToolsOkSubView extends VerticalLayout {
         this.productService = productService;
         this.eventPublisher = eventPublisher;
 
-        this.setAlignItems(FlexComponent.Alignment.CENTER);
+        this.setAlignItems(Alignment.CENTER);
         title = new H3();
         Button okButton = new Button("Voeg toe");
         setUpOkButton(okButton);

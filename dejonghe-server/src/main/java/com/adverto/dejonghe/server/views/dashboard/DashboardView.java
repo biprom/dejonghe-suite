@@ -8,12 +8,14 @@ import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrderTime;
 import com.adverto.dejonghe.common.entities.employee.Employee;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkOrderStatus;
 import com.adverto.dejonghe.server.customEvents.GetSelectedWorkOrderEvent;
+import com.adverto.dejonghe.server.views.workorder.WorkorderView;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.charts.Chart;
 import com.vaadin.flow.component.charts.model.*;
 import com.vaadin.flow.component.charts.model.style.FontWeight;
 import com.vaadin.flow.component.charts.model.style.SolidColor;
 import com.vaadin.flow.component.charts.model.style.Style;
+import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Paragraph;
@@ -55,16 +57,34 @@ public class DashboardView extends VerticalLayout {
     List<WorkOrder>workOrderList;
     List<WorkOrderGantSeriesItem>workOrderGantSeriesItems = new ArrayList<>();
 
-    private LocalDate selectedDay = LocalDate.now();
+    DashboardDateState dashboardDateState;
+
+    private final DatePicker startDatePicker =
+            new DatePicker("Van");
+
+    private final DatePicker endDatePicker =
+            new DatePicker("Tot");
+
+    private boolean updatingDatePickers;
+
+    private LocalDate selectedDay;
+    private LocalDate selectedStartDate;
+    private LocalDate selectedEndDate;
 
     @Autowired
     public DashboardView(WorkOrderService workOrderService,
                          ApplicationEventPublisher eventPublisher,
-                         EmployeeService employeeService) {
+                         EmployeeService employeeService,
+                         DashboardDateState dashboardDateState) {
 
         this.eventPublisher = eventPublisher;
         this.workOrderService = workOrderService;
         this.employeeService = employeeService;
+        this.dashboardDateState = dashboardDateState;
+
+        selectedStartDate = dashboardDateState.getStartDate();
+        selectedEndDate = dashboardDateState.getEndDate();
+        selectedDay = selectedStartDate;
 
         setUpDemoGanttChart();
     }
@@ -72,12 +92,69 @@ public class DashboardView extends VerticalLayout {
 
     private void setUpDemoGanttChart() {
 
-        Button previousDay = new Button("◀", e -> shiftDay(-1));
-        Button todayButton = new Button("Vandaag", e -> {
-            selectedDay = LocalDate.now();
-            shiftDay(0);
+
+
+        // =========================================================
+        // DATE RANGE PICKER
+        // =========================================================
+
+        startDatePicker.setValue(selectedStartDate);
+        endDatePicker.setValue(selectedEndDate);
+        endDatePicker.setMin(selectedStartDate);
+
+
+        // Als startdatum verandert:
+        // einddatum automatisch gelijk zetten aan startdatum
+        startDatePicker.addValueChangeListener(event -> {
+
+            if (updatingDatePickers) {
+                return;
+            }
+
+            LocalDate startDate = event.getValue();
+
+            if (startDate == null) {
+                return;
+            }
+
+            showSingleDay(startDate);
         });
-        Button nextDay = new Button("▶", e -> shiftDay(1));
+
+
+        // Als gebruiker de einddatum expliciet verandert:
+        // dan maken we er een range van
+        endDatePicker.addValueChangeListener(event -> {
+
+            if (updatingDatePickers) {
+                return;
+            }
+
+            LocalDate startDate = startDatePicker.getValue();
+            LocalDate endDate = event.getValue();
+
+            if (startDate == null || endDate == null) {
+                return;
+            }
+
+            selectedDay = startDate;
+            selectedStartDate = startDate;
+            selectedEndDate = endDate;
+
+            dashboardDateState.setRange(
+                    startDate,
+                    endDate
+            );
+
+            updateChartRange(
+                    startDate,
+                    endDate
+            );
+        });
+
+
+        // =========================================================
+        // JOUW BESTAANDE CHART CODE
+        // =========================================================
 
         XAxis xAxis = configuration.getxAxis();
 
@@ -93,16 +170,17 @@ public class DashboardView extends VerticalLayout {
 
         xAxis.setTickInterval(3600 * 1000);
         xAxis.setStartOnTick(true);
-        LocalDate today = LocalDate.now();
 
         ZoneId zone = ZoneId.systemDefault();
 
-        long startOfDay = today.atTime(5, 0)
+        long startOfDay = selectedStartDate
+                .atTime(5, 0)
                 .atZone(zone)
                 .toInstant()
                 .toEpochMilli();
 
-        long endOfDay = today.atTime(22, 0)
+        long endOfDay = selectedEndDate
+                .atTime(22, 0)
                 .atZone(zone)
                 .toInstant()
                 .toEpochMilli();
@@ -144,7 +222,6 @@ public class DashboardView extends VerticalLayout {
         dayButton.setCount(1);
         dayButton.setText("d");
 
-
         RangeSelectorButton weekButton = new RangeSelectorButton();
         weekButton.setType(RangeSelectorTimespan.WEEK);
         weekButton.setCount(1);
@@ -159,75 +236,105 @@ public class DashboardView extends VerticalLayout {
         allButton.setType(RangeSelectorTimespan.ALL);
         allButton.setText("All");
 
-        rangeSelector.setButtons(dayButton, weekButton, monthButton, allButton);
+        rangeSelector.setButtons(
+                dayButton,
+                weekButton,
+                monthButton,
+                allButton
+        );
 
         configuration.setRangeSelector(rangeSelector);
 
         configuration.getRangeSelector().setEnabled(false);
         configuration.getRangeSelector().setSelected(0);
+
         Time time = new Time();
         time.setUseUTC(false);
         configuration.setTime(time);
 
         navigator = configuration.getNavigator();
-        navigator.setEnabled(true);
+        navigator.setEnabled(false);
 
-        long startTime = LocalDate.now().minusDays(30).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        long endTime = LocalDate.now().plusDays(5).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        long startTime = LocalDate.now()
+                .minusDays(30)
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli();
+
+        long endTime = LocalDate.now()
+                .plusDays(5)
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli();
 
         navigator.getXAxis().setMin(startTime);
         navigator.getXAxis().setMax(endTime);
 
         AxisGrid grid = new AxisGrid();
         grid.setEnabled(true);
+
         grid.setColumns(List.of(
                 createProjectColumn()
-                //createStartDateColumn(),
-                //createEndDateColumn())
         ));
+
         yAxis.setGrid(grid);
 
         PlotOptionsGantt plotOptionsGantt = new PlotOptionsGantt();
 
         configuration.setPlotOptions(plotOptionsGantt);
+
         plotOptionsGantt.setPointPadding(0.0);
         plotOptionsGantt.setGroupPadding(0.0);
         plotOptionsGantt.setBorderWidth(1);
-        //plotOptionsGantt.setOpacity(0.5);
-        plotOptionsGantt.setBorderColor(new SolidColor("#C49000"));
+        plotOptionsGantt.setBorderColor(
+                new SolidColor("#C49000")
+        );
 
         createProjectDevelopmentSeries();
 
-        // Configure Labels
-        PlotOptionsGantt seriesPlotOptions = new PlotOptionsGantt();
+        PlotOptionsGantt seriesPlotOptions =
+                new PlotOptionsGantt();
+
         var dataLabels = new ArrayList<DataLabels>();
 
         var assigneeLabel = new DataLabels(true);
+
         Style style = new Style();
         style.setFontSize("16px");
         style.setColor(SolidColor.BLACK);
         style.setFontWeight(FontWeight.BOLD);
+
         assigneeLabel.setStyle(style);
         assigneeLabel.setAlign(HorizontalAlign.LEFT);
         assigneeLabel.setInside(true);
         assigneeLabel.setAllowOverlap(false);
         assigneeLabel.setFormat("{point.custom.assignee}");
+
         dataLabels.add(assigneeLabel);
 
         seriesPlotOptions.setDataLabels(dataLabels);
+
         series.setPlotOptions(seriesPlotOptions);
+
         configuration.addSeries(series);
 
         if (overlapSeries != null) {
-            PlotOptionsGantt overlapPlotOptions = new PlotOptionsGantt();
+
+            PlotOptionsGantt overlapPlotOptions =
+                    new PlotOptionsGantt();
+
             overlapPlotOptions.setOpacity(0.5);
             overlapPlotOptions.setBorderWidth(0);
-            overlapSeries.setPlotOptions(overlapPlotOptions);
+
+            overlapSeries.setPlotOptions(
+                    overlapPlotOptions
+            );
+
             configuration.addSeries(overlapSeries);
         }
 
-
         chart.setHeight("1200px");
+
 
         chart.addPointClickListener(event -> {
 
@@ -265,22 +372,161 @@ public class DashboardView extends VerticalLayout {
             dialog.open();
         });
 
-
         ChartModel chartConf = configuration.getChart();
 
         Style styleChart = new Style();
         styleChart.setFontWeight(FontWeight.BOLD);
         styleChart.setFontSize("26px");
+
         chartConf.setStyle(styleChart);
 
-        HorizontalLayout toolbar =
-                new HorizontalLayout(
-                        previousDay,
-                        todayButton,
-                        nextDay);
 
-        VerticalLayout layout = new VerticalLayout(chart);
-        add(toolbar,layout);
+        // =========================================================
+        // TOOLBAR
+        // =========================================================
+
+        Button previousDay = new Button(
+                "◀",
+                event -> shiftDay(-1)
+        );
+
+        Button todayButton = new Button(
+                "Vandaag",
+                event -> showSingleDay(LocalDate.now())
+        );
+
+        Button nextDay = new Button(
+                "▶",
+                event -> shiftDay(1)
+        );
+
+        HorizontalLayout toolbar = new HorizontalLayout(
+                previousDay,
+                todayButton,
+                nextDay,
+                startDatePicker,
+                endDatePicker
+        );
+
+        toolbar.setDefaultVerticalComponentAlignment(Alignment.END);
+        toolbar.setJustifyContentMode(JustifyContentMode.CENTER);
+
+        toolbar.setPadding(true);
+        toolbar.setSpacing(true);
+
+        toolbar.getStyle()
+                .set("background", "#FFEC99")
+                .set("border", "1px solid #C49000")
+                .set("border-radius", "16px")
+                .set("box-shadow", "0 4px 18px rgba(0,0,0,0.08)")
+                .set("padding", "14px 20px")
+                .set("margin", "8px auto 18px")
+                .set("width", "fit-content")
+                .set("max-width", "calc(100% - 32px)");
+
+
+        VerticalLayout layout = new VerticalLayout(
+                toolbar,
+                chart
+        );
+
+        layout.setWidthFull();
+
+        add(layout);
+
+    }
+
+    private void showSingleDay(LocalDate day) {
+
+        if (day == null) {
+            return;
+        }
+
+        selectedDay = day;
+        selectedStartDate = day;
+        selectedEndDate = day;
+
+        dashboardDateState.setRange(
+                day,
+                day
+        );
+
+        /*
+         * Voorkomt dat setValue() opnieuw de listeners uitvoert.
+         */
+        updatingDatePickers = true;
+
+        updatingDatePickers = true;
+
+        try {
+            startDatePicker.setValue(selectedStartDate);
+            endDatePicker.setMin(selectedStartDate);
+            endDatePicker.setValue(selectedEndDate);
+        } finally {
+            updatingDatePickers = false;
+        }
+
+        updateChartRange(
+                day,
+                day
+        );
+    }
+
+    private void updateSelectedRange(
+            LocalDate startDate,
+            LocalDate endDate) {
+
+        if (startDate == null) {
+            return;
+        }
+
+        if (endDate == null) {
+            endDate = startDate;
+        }
+
+        selectedStartDate = startDate;
+        selectedEndDate = endDate;
+
+        selectedDay = startDate;
+
+        updateChartRange(
+                startDate,
+                endDate
+        );
+    }
+
+    private void updateChartRange(
+            LocalDate startDate,
+            LocalDate endDate) {
+
+        ZoneId zone = ZoneId.systemDefault();
+
+        long start = startDate
+                .atTime(5, 0)
+                .atZone(zone)
+                .toInstant()
+                .toEpochMilli();
+
+        long end = endDate
+                .atTime(22, 0)
+                .atZone(zone)
+                .toInstant()
+                .toEpochMilli();
+
+        XAxis xAxis = configuration.getxAxis();
+
+        xAxis.setTickInterval(60 * 60 * 1000);
+        xAxis.setStartOnTick(true);
+
+        xAxis.setGridLineWidth(1);
+        xAxis.setGridLineColor(
+                new SolidColor("#D6D6D6")
+        );
+
+        xAxis.setMin(start);
+        xAxis.setMax(end);
+
+        chart.drawChart();
     }
 
     private String formatTime(Instant instant) {
@@ -657,28 +903,30 @@ public class DashboardView extends VerticalLayout {
 
     private void generateWorkOrderGantSeriesItem(String id, WorkOrderStatus status, String abbreviation, String employeeId, String addressName,LocalDate date, LocalTime timeUp, LocalTime timeDown) {
         try{
-            WorkOrderGantSeriesItem workOrderGantSeriesItem = new WorkOrderGantSeriesItem();
-            workOrderGantSeriesItem.setWorkOrderId(id);
-            Optional<Employee> optEmployee = employeeService.findById(employeeId);
-            if (optEmployee.isPresent()) {
-                Employee employee = optEmployee.get();
-                workOrderGantSeriesItem.setPrio(employee.getPriority());
+            if(timeUp != null && timeDown != null){
+                WorkOrderGantSeriesItem workOrderGantSeriesItem = new WorkOrderGantSeriesItem();
+                workOrderGantSeriesItem.setWorkOrderId(id);
+                Optional<Employee> optEmployee = employeeService.findById(employeeId);
+                if (optEmployee.isPresent()) {
+                    Employee employee = optEmployee.get();
+                    workOrderGantSeriesItem.setPrio(employee.getPriority());
+                }
+                else{
+                    workOrderGantSeriesItem.setPrio(0);
+                }
+                workOrderGantSeriesItem.setAbbreviationName(abbreviation);
+                workOrderGantSeriesItem.setStatus(status.getAbbr());
+                workOrderGantSeriesItem.setWorkAddressName(addressName);
+                workOrderGantSeriesItem.setStart(timeUp
+                        .atDate(date)
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant());
+                workOrderGantSeriesItem.setEnd(timeDown
+                        .atDate(date)
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant());
+                workOrderGantSeriesItems.add(workOrderGantSeriesItem);
             }
-            else{
-                workOrderGantSeriesItem.setPrio(0);
-            }
-            workOrderGantSeriesItem.setAbbreviationName(abbreviation);
-            workOrderGantSeriesItem.setStatus(status.getAbbr());
-            workOrderGantSeriesItem.setWorkAddressName(addressName);
-            workOrderGantSeriesItem.setStart(timeUp
-                    .atDate(date)
-                    .atZone(ZoneId.systemDefault())
-                    .toInstant());
-            workOrderGantSeriesItem.setEnd(timeDown
-                    .atDate(date)
-                    .atZone(ZoneId.systemDefault())
-                    .toInstant());
-            workOrderGantSeriesItems.add(workOrderGantSeriesItem);
         }
         catch (Exception e) {
             System.out.println("Volgende werkbon kon niet worden getoond : " + e.getMessage());
@@ -687,27 +935,15 @@ public class DashboardView extends VerticalLayout {
 
     private void shiftDay(int days) {
 
-        selectedDay = selectedDay.plusDays(days);
+        LocalDate currentStartDate =
+                selectedStartDate != null
+                        ? selectedStartDate
+                        : LocalDate.now();
 
-        ZoneId zone = ZoneId.systemDefault();
+        LocalDate newDate =
+                currentStartDate.plusDays(days);
 
-        long startOfDay = selectedDay
-                .atTime(5, 0)
-                .atZone(zone)
-                .toInstant()
-                .toEpochMilli();
-
-        long endOfDay = selectedDay
-                .atTime(22, 0)
-                .atZone(zone)
-                .toInstant()
-                .toEpochMilli();
-
-        XAxis xAxis = chart.getConfiguration().getxAxis();
-        xAxis.setMin(startOfDay);
-        xAxis.setMax(endOfDay);
-
-        chart.drawChart();
+        showSingleDay(newDate);
     }
 
 

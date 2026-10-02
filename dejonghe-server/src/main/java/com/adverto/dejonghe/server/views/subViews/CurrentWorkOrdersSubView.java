@@ -1,6 +1,7 @@
 package com.adverto.dejonghe.server.views.subViews;
 
 import com.adverto.dejonghe.common.entities.customers.Address;
+import com.adverto.dejonghe.common.entities.invoice.Invoice;
 import com.adverto.dejonghe.common.services.WorkOrderPdfServices;
 import com.adverto.dejonghe.server.Controllers.PdfController;
 import com.adverto.dejonghe.server.customEvents.GetSelectedWorkOrderEvent;
@@ -9,13 +10,19 @@ import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrder;
 import com.adverto.dejonghe.common.entities.enums.employee.UserFunction;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkOrderStatus;
 import com.adverto.dejonghe.server.services.workorder.WorkorderViewState;
+import com.vaadin.componentfactory.addons.splide.ImageSlide;
+import com.vaadin.componentfactory.addons.splide.Splide;
 import com.vaadin.flow.component.Text;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridSortOrder;
 import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.grid.HeaderRow;
+import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
@@ -132,6 +139,7 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
         filterName.addValueChangeListener(event -> {
             String search = event.getValue();
 
+            workorderViewState.setCustomer(search);
             if (!search.isBlank()) {
                 String searchLower = search.toLowerCase();
 
@@ -192,16 +200,23 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
             return span;
         }).setHeader("Omschrijving");
         columnSubject.setFlexGrow(7);
-        columnSubject.setClassNameGenerator(item -> "ellipsis-column");
+        columnSubject.setPartNameGenerator(item -> "ellipsis-column");
         Grid.Column<WorkOrder> columnResponsible = pendingWorkOrdersGrid.addColumn(workOrder -> getActiveMasterEmployees(workOrder)).setHeader("Verantwoordelijke").setFlexGrow(1);
         pendingWorkOrdersGrid.addComponentColumn(workOrder -> {
             return getOpenPdfIcon(workOrder);
         }).setHeader("PDF").setFlexGrow(0);
+        Grid.Column<WorkOrder> cameraColumn = pendingWorkOrdersGrid.addComponentColumn(workOrder -> {
+            return getImageIcon(workOrder);
+        }).setHeader("Foto").setFlexGrow(0);
 
         pendingWorkOrdersGrid.addItemClickListener(event -> {
 
             //if selectionColumn is aangeklikt -> don't trigger event!
             if(event.getColumn() == null){
+                return;
+            }
+
+            if (event.getColumn() == cameraColumn) {
                 return;
             }
 
@@ -255,6 +270,81 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
 
         });
         return pdfIcon;
+    }
+
+    private Icon getImageIcon(WorkOrder workOrder) {
+        if((workOrder.getImageList() != null) && (workOrder.getImageList().size() > 0)){
+            Icon camIcon = new Icon(VaadinIcon.CAMERA);
+
+            camIcon.getStyle()
+                    .set("cursor", "pointer");
+
+            camIcon.addSingleClickListener(event -> {
+
+                List<ImageSlide> slides = workOrder.getImageList().stream()
+                        .map(photoId ->
+                                new ImageSlide("/api/photos/" + photoId)
+                        )
+                        .toList();
+
+                Splide slider = new Splide(slides);
+
+                slider.setId("workorder-images-slider");
+                slider.setWidthFull();
+                slider.setHeightFull();
+
+                Dialog dialog = new Dialog();
+
+                dialog.setWidth("50vw");
+                dialog.setHeight("50vh");
+
+                Button closeButton = new Button(
+                        VaadinIcon.CLOSE.create(),
+                        e -> dialog.close()
+                );
+
+                closeButton.addThemeVariants(
+                        ButtonVariant.LUMO_TERTIARY_INLINE
+                );
+
+                H3 title = new H3("Foto's werkbon");
+
+                HorizontalLayout header = new HorizontalLayout(
+                        title,
+                        closeButton
+                );
+
+                header.setWidthFull();
+                header.setAlignItems(FlexComponent.Alignment.CENTER);
+                header.setJustifyContentMode(
+                        FlexComponent.JustifyContentMode.BETWEEN
+                );
+
+                var sliderContainer = new Div(slider);
+                sliderContainer.setWidthFull();
+                sliderContainer.getStyle()
+                        .set("height", "calc(50vh - 80px)");
+
+                VerticalLayout content = new VerticalLayout(
+                        header,
+                        sliderContainer
+                );
+
+                content.setSizeFull();
+                content.setPadding(false);
+                content.setSpacing(false);
+
+                dialog.add(content);
+
+                dialog.open();
+            });
+
+            return camIcon;
+        }
+        else{
+            return null;
+        }
+
     }
 
     private String getWorkOrderDiscriptions(WorkOrder workOrder) {

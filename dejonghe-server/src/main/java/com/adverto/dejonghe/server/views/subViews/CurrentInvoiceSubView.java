@@ -7,16 +7,12 @@ import com.adverto.dejonghe.common.dbservices.CustomerService;
 import com.adverto.dejonghe.common.dbservices.DeviceService;
 import com.adverto.dejonghe.common.dbservices.InvoiceService;
 import com.adverto.dejonghe.common.dbservices.WorkOrderService;
-import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.enums.invoice.FINAL_INVOICE_STATUS;
-import com.adverto.dejonghe.common.entities.installation.Device;
 import com.adverto.dejonghe.common.entities.invoice.Invoice;
 import com.adverto.dejonghe.server.services.invoice.InvoiceServices;
 import com.adverto.dejonghe.server.services.invoice.InvoiceViewState;
 import com.adverto.dejonghe.server.views.customers.CustomerView;
 import com.adverto.dejonghe.server.views.workorder.FinishedWorkorderView;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vaadin.flow.component.ClickEvent;
 import com.vaadin.flow.component.ComponentEventListener;
 import com.vaadin.flow.component.Text;
@@ -45,7 +41,7 @@ import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.provider.ListDataProvider;
 import com.vaadin.flow.data.provider.Query;
 import com.vaadin.flow.router.*;
-import com.vaadin.flow.server.StreamResource;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Scope;
@@ -55,22 +51,16 @@ import software.xdev.vaadin.daterange_picker.business.SimpleDateRange;
 import software.xdev.vaadin.daterange_picker.business.SimpleDateRanges;
 import software.xdev.vaadin.daterange_picker.ui.DateRangePicker;
 
-import java.io.IOException;
-import java.io.Serializable;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.Period;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static com.vaadin.flow.component.button.ButtonVariant.LUMO_TERTIARY_INLINE;
 
@@ -128,11 +118,6 @@ public class CurrentInvoiceSubView extends VerticalLayout {
 
     Dialog paymentDialog;
     Dialog checkZeroPricesDialog;
-
-    Double totalOpenAmount;
-    Double totalAmount;
-    Double totalVatAmount;
-    Double totalNetAmount;
 
     Notification warningReOpenWorkOrderNotification;
 
@@ -470,7 +455,7 @@ public class CurrentInvoiceSubView extends VerticalLayout {
                 return "gray";
             }
         });
-        proFormaInvoiceGrid.setClassNameGenerator(item -> item.getFinalizeInvoice() ? "grid-row-grey" : "grid-row-grey");
+        proFormaInvoiceGrid.setPartNameGenerator(item -> item.getFinalizeInvoice() ? "grid-row-grey" : "grid-row-grey");
         proFormaInvoiceGrid.addClassName("rounded-tree");
         proFormaInvoiceGrid.setSelectionMode(Grid.SelectionMode.MULTI);
         proFormaInvoiceGrid.addClassName("my-bold-footer");
@@ -770,6 +755,7 @@ public class CurrentInvoiceSubView extends VerticalLayout {
         actie.getElement().getClassList().add("menu-as-button");
         actie.getSubMenu().addItem("Open PDF",openPdfForProforma(item));
         actie.getSubMenu().addItem("Stuur nr klant", sendProformaToCustomer(item));
+
         if((item.getRequestPoNumber() != null) && (item.getRequestPoNumber() == true)) {
             actie.getSubMenu().addItem("Ga nr klant", goToCustomer(item.getCustomer().getId()));
         }
@@ -812,6 +798,28 @@ public class CurrentInvoiceSubView extends VerticalLayout {
             item.setRequestPoNumber(false);
             invoiceService.save(item);
             dataProvider.refreshAll();
+        };
+    }
+
+    private ComponentEventListener<ClickEvent<MenuItem>> refactProforma(Invoice item) {
+        return event -> {
+            Invoice newInvoice = new Invoice();
+            BeanUtils.copyProperties(item, newInvoice);
+            newInvoice.setId(null);
+            newInvoice.setBFinalInvoice(false);
+            newInvoice.setFinalInvoiceNumber(null);
+            newInvoice.setBillitNumber(null);
+            newInvoice.setBillitError(false);
+            newInvoice.setSendToBillit(false);
+            newInvoice.setPaid(false);
+            if((newInvoice.getPaymentList() != null) && (newInvoice.getPaymentList().size() > 0)){
+                newInvoice.getPaymentList().clear();
+            }
+            newInvoice.setPartialPaid(false);
+            newInvoice.setInvoiceNumber(invoiceServices.getNewProFormaInvoiceNumber());
+            invoiceService.save(newInvoice);
+            dataProvider.refreshAll();
+            Notification.show("Proforma is aangemaakt vanuit deze factuur");
         };
     }
 
@@ -929,6 +937,7 @@ public class CurrentInvoiceSubView extends VerticalLayout {
         actie.getElement().getClassList().add("menu-as-button");
         actie.getSubMenu().addItem("Open PDF",openPdf(item));
         actie.getSubMenu().addItem("Voeg betaling toe",addPayment(item));
+        actie.getSubMenu().addItem("Herfactureer", refactProforma(item));
         if(item.getCustomer() != null){
             actie.getSubMenu().addItem("Ga naar klant", goToCustomer(item.getCustomer().getId()));
         }
@@ -939,7 +948,6 @@ public class CurrentInvoiceSubView extends VerticalLayout {
         actie.getSubMenu().addItem("Terug nr proforma",returnInvoiceToProforma(item));
         actie.getSubMenu().addItem("Kopieer 0- positie artkelen",copy0Products(item));
         actie.getSubMenu().addItem("Stuur naar Billit",sendToBillit(item));
-
 
         horizontalLayout.add(actionBar);
         return horizontalLayout;
@@ -1505,12 +1513,38 @@ public class CurrentInvoiceSubView extends VerticalLayout {
                             ((item.getPaid() == true) && (item.getFinalizeInvoice() == true) && (item.getSendToBillit() == true) && finalStatusFilter.getValue().equals(FINAL_INVOICE_STATUS.PAID));
             }
 
-            if(proformaStatusFilter.getValue() != null){
-                internalStatus = (proformaStatusFilter.getValue().matches("Geen Status") && (item.getToCheck().equals(false))&& item.getBApproved().equals(false)&& item.getBRejected().equals(false)&& item.getRequestPoNumber().equals(false))||
-                        (proformaStatusFilter.getValue().matches("Te controleren") && (item.getToCheck().equals(true)))||
-                        (proformaStatusFilter.getValue().matches("Goedgekeurd") && (item.getBApproved().equals(true)))||
-                        (proformaStatusFilter.getValue().matches("Afgekeurd") && (item.getBRejected().equals(true)))||
-                        (proformaStatusFilter.getValue().matches("PO in aanvraag") && (item.getRequestPoNumber().equals(true)));
+            if (proformaStatusFilter.getValue() != null) {
+
+                boolean poInAanvraag = Boolean.TRUE.equals(item.getRequestPoNumber());
+                boolean teControleren = Boolean.TRUE.equals(item.getToCheck());
+                boolean goedgekeurd = Boolean.TRUE.equals(item.getBApproved());
+                boolean afgekeurd = Boolean.TRUE.equals(item.getBRejected());
+
+                internalStatus = switch (proformaStatusFilter.getValue()) {
+
+                    case "Geen Status" ->
+                            !poInAanvraag
+                                    && !teControleren
+                                    && !goedgekeurd
+                                    && !afgekeurd;
+
+                    case "Te controleren" ->
+                            !poInAanvraag
+                                    && teControleren;
+
+                    case "Goedgekeurd" ->
+                            !poInAanvraag
+                                    && goedgekeurd;
+
+                    case "Afgekeurd" ->
+                            !poInAanvraag
+                                    && afgekeurd;
+
+                    case "PO in aanvraag" ->
+                            poInAanvraag;
+
+                    default -> true;
+                };
             }
 
             if(dateRangePicker.getValue() != null){

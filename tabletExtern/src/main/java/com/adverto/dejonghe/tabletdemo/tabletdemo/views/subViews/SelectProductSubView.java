@@ -6,6 +6,7 @@ import com.adverto.dejonghe.common.entities.enums.employee.UserFunction;
 import com.adverto.dejonghe.common.entities.enums.product.VAT;
 import com.adverto.dejonghe.common.entities.product.product.*;
 import com.adverto.dejonghe.common.services.ProductServices;
+import com.adverto.dejonghe.common.wizard.RVSplate.ProductWizardRVSPlateDialog;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.customEvents.AddProductEventListener;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.customEvents.AddRemoveProductEvent;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.customEvents.GetSelectedProductEvent;
@@ -184,6 +185,12 @@ public class SelectProductSubView extends VerticalLayout {
     TextField tfComment;
     TextField productNameField;
 
+    Span newPriceSpanAgro = new Span();
+    Span newPriceSpanIndustry = new Span();
+
+    private VerticalLayout productGridLayout;
+    private VerticalLayout secondaryLayout;
+
     public SelectProductSubView(ProductService productService,
                                 ProductLevel1Service productLevel1Service,
                                 ProductLevel2Service productLevel2Service,
@@ -235,10 +242,14 @@ public class SelectProductSubView extends VerticalLayout {
         splitLayout.addToPrimary(setUpGridLayoutButtons());
         splitLayout.addToSecondary(setUpHorizontalButtonSelectionAndGridbar());
         this.add(splitLayout);
+        expand(splitLayout);
         this.setMargin(false);
         this.setPadding(false);
         this.setSpacing(false);
-        this.setHeightFull();
+        this.setSizeFull();
+        this.getStyle()
+                .set("min-width", "0")
+                .set("min-height", "0");
     }
 
     private void setUpNumberFormat() {
@@ -266,7 +277,7 @@ public class SelectProductSubView extends VerticalLayout {
             List<Product> productsToAdd = addCoupledProductSubView.getSelectedProdcutList();
             if((productsToAdd != null) && (productsToAdd.size() > 0)) {
                 productSelectedFromCoupledProductPopUP = true;
-                productsToAdd.stream().filter(item -> item.getSelectedAmount() > 0).forEach(item -> {addProductToSelectedProductList(item);});
+                productsToAdd.stream().filter(item -> item.getSelectedAmount() > 0).forEach(item -> {addProductToSelectedProductList(item, false);});
                 productSelectedFromCoupledProductPopUP = false;
             }
             addCoupledProductDialog.close();
@@ -461,7 +472,7 @@ public class SelectProductSubView extends VerticalLayout {
         attachementHlayout.add(selectAll, addToAttachementOrMergedButton);
 
         selectedProductGrid.setRowsDraggable(true);
-        selectedProductGrid.setAllRowsVisible(true);
+        selectedProductGrid.setAllRowsVisible(false);
         selectedProductGrid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES);
         selectedProductGrid.addThemeVariants(GridVariant.LUMO_COLUMN_BORDERS);
         selectedProductGrid.addComponentColumn(item -> {
@@ -475,29 +486,32 @@ public class SelectProductSubView extends VerticalLayout {
         }).setFlexGrow(0).setFrozen(true);
 
         selectedProductGridDateColumn = selectedProductGrid.addComponentColumn(item -> {
-            if(item.getDate() == null){
+
+            if (item.getDate() == null) {
                 item.setDate(LocalDate.now());
             }
+
             LocalDate current = item.getDate();
 
-            // Vind de vorige item in de lijst
-            int index = dataView.getItems().toList().indexOf(item);
-            LocalDate prevDate = (index > 0) ? dataView.getItems().toList().get(index - 1).getDate() : null;
+            List<Product> products = dataView.getItems().toList();
+            int index = products.indexOf(item);
+
+            LocalDate prevDate = (index > 0)
+                    ? products.get(index - 1).getDate()
+                    : null;
 
             if (prevDate != null && prevDate.equals(current)) {
-                if((item.getDateToShowOnInvoice() == null) || (item.getDateToShowOnInvoice().length() == 0)){
-                    item.setDateToShowOnInvoice("");
-                }
                 return new Span("");
-            } else {
-                Span label = new Span(current.format(DateTimeFormatter.ofPattern("dd-MM-yyyy")).toString());
-                if((item.getDateToShowOnInvoice() == null) || (item.getDateToShowOnInvoice().length() == 0)){
-                    item.setDateToShowOnInvoice(current.format(DateTimeFormatter.ofPattern("dd-MM-yyyy")).toString());
-                }
-                label.getStyle().set("font-weight", "bold");
-                return label;
             }
-            //return item.getDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+
+            String formattedDate =
+                    current.format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
+
+            Span label = new Span(formattedDate);
+            label.getStyle().set("font-weight", "bold");
+
+            return label;
+
         }).setHeader("Datum");
 
         selectedProductGridDateColumnToShowOnInvoice = selectedProductGrid.addColumn(item -> {
@@ -769,10 +783,12 @@ public class SelectProductSubView extends VerticalLayout {
             if (dropLocation == GridDropLocation.BELOW) {
                 dataView.addItemAfter(draggedItem, targetProduct);
                 draggedItem.setDate(targetProduct.getDate());
+                draggedItem.setDateToShowOnInvoice(targetProduct.getDateToShowOnInvoice());
                 selectedProductGrid.getDataProvider().refreshAll();
             } else {
                 dataView.addItemBefore(draggedItem, targetProduct);
                 draggedItem.setDate(targetProduct.getDate());
+                draggedItem.setDateToShowOnInvoice(targetProduct.getDateToShowOnInvoice());
                 selectedProductGrid.getDataProvider().refreshAll();
             }
             eventPublisher.publishEvent(new AddRemoveProductEvent(this, "",null));
@@ -863,7 +879,6 @@ public class SelectProductSubView extends VerticalLayout {
         dpDateToShowOnInvoice.setPlaceholder("dd-MM-yyyy");
         dpDateToShowOnInvoice.setI18n(new DatePicker.DatePickerI18n()
                 .setDateFormat("dd-MM-yyyy"));
-
         addCloseHandler(dpDateToShowOnInvoice, selectedProductEditor);
 
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy");
@@ -932,12 +947,9 @@ public class SelectProductSubView extends VerticalLayout {
                         }
                     }
                 }, (product,sellPrice) -> {
-                    if ((selectedCustomer != null) && (selectedCustomer.getBAgro())) {
-                        product.setSellPrice(sellPrice);
-                    }
-                    else{
-                        product.setSellPriceIndustry(sellPrice);
-                    }
+                    //if industrie price is edited to 0.0 for a guaranty -> the agroprice must also set to 0.0 because it may select a agroprice that is not 0.0 for de getter!
+                    product.setSellPrice(sellPrice);
+                    product.setSellPriceIndustry(sellPrice);
                 });
         selectedProductUnitPriceColumn.setEditorComponent(tfUnitPrice);
 
@@ -962,14 +974,31 @@ public class SelectProductSubView extends VerticalLayout {
         selectedProductVATalPriceColumn.setEditorComponent(sVAT);
 
         selectedProductBinder.addValueChangeListener(event -> {
+
             Product productToChange = selectedProductEditor.getItem();
-            if((productToChange.getBComment() != null) && (productToChange.getBComment() == false)){
-                productToChange.setTotalPrice(getTotalProductPrice(productToChange));
+
+            if (productToChange == null) {
+                return;
             }
-            selectedProductBinder.readBean(productToChange);
+
+            if (Boolean.FALSE.equals(productToChange.getBComment())) {
+                productToChange.setTotalPrice(
+                        getTotalProductPrice(productToChange)
+                );
+            }
+
             setTotalsInFooter();
-            //publish event so the received View can store the selected Workorder/Invoice...
-            eventPublisher.publishEvent(new AddRemoveProductEvent(this, "",null));
+
+//            selectedProductGrid.getDataProvider()
+//                    .refreshItem(productToChange);
+
+            eventPublisher.publishEvent(
+                    new AddRemoveProductEvent(
+                            this,
+                            "",
+                            productToChange
+                    )
+            );
         });
 
         selectedProductGrid.addItemClickListener(e -> {
@@ -1125,8 +1154,15 @@ public class SelectProductSubView extends VerticalLayout {
     private void setUpProductGrid() {
         productGrid = new Grid<>();
         productGrid.setWidth("100%");
-        productGrid.setAllRowsVisible(true);
+        //productGrid.setAllRowsVisible(true);
+        //productGrid.setHeightFull();
         productGrid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES);
+        productGrid.setPartNameGenerator(item -> {
+            if (item.isSelectedMode()) {
+                return "selected-row";
+            }
+            return null;
+        });
 //        Grid.Column<Product> sortColumn = productGrid.addColumn(item -> {
 //            if(!item.getPositionNumber().isEmpty()){
 //                try{
@@ -1152,7 +1188,6 @@ public class SelectProductSubView extends VerticalLayout {
                 else{
                     Span span = new Span(item.getProductCode());
                     span.getStyle().set("font-weight", "bold");
-                    span.addClassName("boxed-text");
                     return span;
                 }
             }
@@ -1267,24 +1302,22 @@ public class SelectProductSubView extends VerticalLayout {
                         return boolCompare;
                     }
 
-                    // 2️⃣ Bepalen of positionNumber bestaat
-                    boolean p1HasPositionNumber = p1.getPositionNumber() != null && !p1.getPositionNumber().isBlank();
-                    boolean p2HasPositionNumber = p2.getPositionNumber() != null && !p2.getPositionNumber().isBlank();
+                    boolean o1HasPositionNumber = p1.getPositionNumber() != null && !p1.getPositionNumber().isBlank();
+                    boolean o2HasPositionNumber = p2.getPositionNumber() != null && !p2.getPositionNumber().isBlank();
 
-                    // 3️⃣ Optioneel: zelfde groepering als eerder (met positionNumber eerst)
-                    if (p1HasPositionNumber != p2HasPositionNumber) {
-                        return p1HasPositionNumber ? -1 : 1;
-                    }
+                    // 1. Alles met positionNumber bovenaan
+                    if (o1HasPositionNumber && !o2HasPositionNumber) return -1;
+                    if (!o1HasPositionNumber && o2HasPositionNumber) return 1;
 
-                    // 4️⃣ Sorteren op juiste veld
-                    String value1 = p1HasPositionNumber ? p1.getPositionNumber() : p1.getInternalName();
-                    String value2 = p2HasPositionNumber ? p2.getPositionNumber() : p2.getInternalName();
+                    // 2. Binnen dezelfde groep sorteren op het juiste veld
+                    String value1 = o1HasPositionNumber ? p1.getPositionNumber() : p1.getInternalName();
+                    String value2 = o2HasPositionNumber ? p2.getPositionNumber() : p2.getInternalName();
 
                     return compareOnderdeel(value1, value2);
                 })
                 .setAutoWidth(true)
                 .setResizable(true);
-        productCommentColumn = productGrid.addColumn(item -> item.getComment()).setHeader("Commentaar").setAutoWidth(true).setResizable(true);
+        productCommentColumn = productGrid.addColumn(item -> item.getComment()).setHeader("Commentaar").setResizable(true);
         productCommentColumn = productGrid.addComponentColumn(item -> {
             Span linkLike = new Span(productServices.getEndFolder(item));
             linkLike.getStyle()
@@ -1424,8 +1457,9 @@ public class SelectProductSubView extends VerticalLayout {
                 }
                 else{
                     productSelectedFromCoupledProductPopUP = false;
-                    addProductToSelectedProductList(item);
+                    addProductToSelectedProductList(item, false);
                     productSelectedFromCoupledProductPopUP = false;
+                    item.setSelectedMode(true);
                 }
             });
             return plusButton;
@@ -1508,7 +1542,20 @@ public class SelectProductSubView extends VerticalLayout {
         });
     }
 
-    public void addProductToSelectedProductList(Product item) {
+    public void addProductToSelectedProductList(Product item, boolean selectedFromWizard) {
+
+        if (!selectedFromWizard
+                && item.getProductCode() != null
+                && item.getProductCode().startsWith("RVS-PL")) {
+
+            ProductWizardRVSPlateDialog dialog =
+                    new ProductWizardRVSPlateDialog(product -> {addProductToSelectedProductList(product, true);}, item,productService);
+
+            dialog.open();
+            return;
+        }
+
+
         productToAdd = new Product();
         productToAdd.setTeamNumber(selectedTeam);
         if(item.getId() != null){
@@ -1648,6 +1695,7 @@ public class SelectProductSubView extends VerticalLayout {
                         dataView.setFilter(product ->
                                 product.getTeamNumber() == selectedTeam);
                         setTotalsInFooter();
+                        setTotalsInFooter();
                         eventPublisher.publishEvent(new AddRemoveProductEvent(this, "Product toegevoegd", productToAdd));
                     }
                 }
@@ -1670,6 +1718,7 @@ public class SelectProductSubView extends VerticalLayout {
                 dataView.setFilter(product ->
                         product.getTeamNumber() == selectedTeam);
                 setTotalsInFooter();
+
                 eventPublisher.publishEvent(new AddRemoveProductEvent(this, "Product toegevoegd", productToAdd));
             }
             item.setSelectedAmount(0.0);
@@ -1678,51 +1727,71 @@ public class SelectProductSubView extends VerticalLayout {
         else{
             Notification.show("Gelieve een geldig hoeveelheid in te vullen aub!");
         }
+
     }
 
     private int compareOnderdeel(String s1, String s2) {
-        if((s1 != null) && (s2 != null)){
-            List<Object> parts1 = splitAlphaNumeric(s1);
-            List<Object> parts2 = splitAlphaNumeric(s2);
 
-            int len = Math.min(parts1.size(), parts2.size());
+        if (s1 == null && s2 == null) return 0;
+        if (s1 == null) return 1;
+        if (s2 == null) return -1;
 
-            for (int i = 0; i < len; i++) {
-                Object p1 = parts1.get(i);
-                Object p2 = parts2.get(i);
+        List<Object> parts1 = splitAlphaNumeric(s1);
+        List<Object> parts2 = splitAlphaNumeric(s2);
 
-                int cmp;
-                if (p1 instanceof String && p2 instanceof String) {
-                    cmp = ((String) p1).compareToIgnoreCase((String) p2);
-                } else if (p1 instanceof Number && p2 instanceof Number) {
-                    cmp = Double.compare(((Number) p1).doubleValue(), ((Number) p2).doubleValue());
-                } else {
-                    // String vs Number → String komt altijd eerst
-                    cmp = (p1 instanceof String) ? -1 : 1;
-                }
+        int len = Math.min(parts1.size(), parts2.size());
 
-                if (cmp != 0) return cmp;
+        for (int i = 0; i < len; i++) {
+            Object p1 = parts1.get(i);
+            Object p2 = parts2.get(i);
+
+            int cmp;
+
+            if (p1 instanceof String && p2 instanceof String) {
+
+                cmp = ((String) p1)
+                        .compareToIgnoreCase((String) p2);
+
+            } else if (p1 instanceof Number && p2 instanceof Number) {
+
+                cmp = Double.compare(
+                        ((Number) p1).doubleValue(),
+                        ((Number) p2).doubleValue()
+                );
+
+            } else {
+                // Getallen komen vóór letters
+                cmp = (p1 instanceof Number) ? -1 : 1;
             }
 
-            // Als alles gelijk is, kortere string komt eerst
-            return Integer.compare(parts1.size(), parts2.size());
+            if (cmp != 0) {
+                return cmp;
+            }
         }
-        return 9999;
+
+        return Integer.compare(parts1.size(), parts2.size());
     }
 
     private List<Object> splitAlphaNumeric(String input) {
+
         List<Object> parts = new ArrayList<>();
 
-        Matcher matcher = Pattern.compile("(\\d+[\\.,]?\\d*|\\D+)").matcher(input);
+        Matcher matcher = Pattern
+                .compile("\\d+(?:,\\d+)?|[A-Za-z]+")
+                .matcher(input);
+
         while (matcher.find()) {
-            String part = matcher.group(1).trim();
-            if (part.matches("\\d+[\\.,]?\\d*")) {
-                part = part.replace(",", "."); // vervang komma door punt
-                try {
-                    parts.add(Double.parseDouble(part));
-                } catch (NumberFormatException e) {
-                    parts.add(part); // fallback: behandel als string
-                }
+
+            String part = matcher.group();
+
+            if (part.matches("\\d+(?:,\\d+)?")) {
+
+                parts.add(
+                        Double.parseDouble(
+                                part.replace(",", ".")
+                        )
+                );
+
             } else {
                 parts.add(part);
             }
@@ -1730,7 +1799,6 @@ public class SelectProductSubView extends VerticalLayout {
 
         return parts;
     }
-
 
 
     private void saveChangedProductIfAllParametersAreOK(Product productToChange) {
@@ -1751,9 +1819,35 @@ public class SelectProductSubView extends VerticalLayout {
 
     }
 
-    private FormLayout setUpHorizontalButtonSelectionAndGridbar() {
+    private VerticalLayout setUpHorizontalButtonSelectionAndGridbar() {
+
+        // This is the fixed container for the secondary part of the SplitLayout.
+        // Its content switches between a FormLayout with buttons and a
+        // VerticalLayout with filter + productGrid.
+        secondaryLayout = new VerticalLayout();
+        secondaryLayout.setSizeFull();
+        secondaryLayout.setPadding(false);
+        secondaryLayout.setSpacing(false);
+        secondaryLayout.getStyle()
+                .set("min-width", "0")
+                .set("min-height", "0");
+
         formLayoutLastSelectedLevel = new FormLayout();
-        return formLayoutLastSelectedLevel;
+        formLayoutLastSelectedLevel.setWidthFull();
+        formLayoutLastSelectedLevel.setColumnSpacing(2, Unit.MM);
+        formLayoutLastSelectedLevel.setRowSpacing(2, Unit.MM);
+
+        secondaryLayout.add(formLayoutLastSelectedLevel);
+
+        return secondaryLayout;
+    }
+
+    private void showButtonLayout() {
+        // When a product grid was visible, put the button FormLayout back
+        // into the secondary side of the SplitLayout.
+        secondaryLayout.removeAll();
+        secondaryLayout.add(formLayoutLastSelectedLevel);
+        formLayoutLastSelectedLevel.setWidthFull();
     }
 
     private VerticalLayout setUpGridLayoutButtons() {
@@ -1761,6 +1855,9 @@ public class SelectProductSubView extends VerticalLayout {
         formLayout = new FormLayout();
         formLayout.setSizeFull();
         formLayout.setWidth("100%");
+        formLayout.setColumnSpacing(2,Unit.MM);
+        formLayout.setRowSpacing(2,Unit.MM);
+
         addButtonsToHorizontalButtonLayoutLevel1(productLevel1Service.getAllProductLevel1());
         verticalLayout.add(addSearchProductField(), formLayout);
         return verticalLayout;
@@ -1776,14 +1873,8 @@ public class SelectProductSubView extends VerticalLayout {
                 if(productByInternalNameOrComment.isPresent()){
                     productList = productByInternalNameOrComment.get();
                     addItemsToProductGrid(productByInternalNameOrComment.get());
-                    productGrid.setAllRowsVisible(true);
-                    formLayoutLastSelectedLevel.removeAll();
-                    VerticalLayout verticalLayout = new VerticalLayout();
-                    verticalLayout.setSizeFull();
-                    verticalLayout.setSpacing(true);
-                    verticalLayout.add(tfFilter,productGrid);
-                    formLayoutLastSelectedLevel.add(verticalLayout);
-                    formLayoutLastSelectedLevel.setColspan(verticalLayout,2);
+                    productGrid.setAllRowsVisible(false);
+                    showProductGrid();
                 }
                 Notification.show("Producten aan het zoeken.");
             }
@@ -1970,6 +2061,8 @@ public class SelectProductSubView extends VerticalLayout {
     }
 
     private void getBackToLastLevel() {
+        showButtonLayout();
+
         if(selectedProductLevel7 != null){
             formLayoutLastSelectedLevel.removeAll();
             addButtonsToHorizontalButtonLayoutLevel6(productLevel6Service.getProductLevel6ByPreviousLevelNames(selectedProductLevel5,selectedProductLevel4,selectedProductLevel3,selectedProductLevel2,selectedProductLevel1),selectedProductLevel6);
@@ -2003,6 +2096,7 @@ public class SelectProductSubView extends VerticalLayout {
     }
 
     private void addButtonsToVerticalButtonLayoutLevel2(Optional<List<ProductLevel2>> productLevel2sFromPreviousLevels) {
+        showButtonLayout();
         formLayoutLastSelectedLevel.removeAll();
         if (productLevel2sFromPreviousLevels.isPresent()) {
             for(ProductLevel2 productLevel2 : productLevel2sFromPreviousLevels.get()){
@@ -2023,11 +2117,7 @@ public class SelectProductSubView extends VerticalLayout {
                 productList = allProductsByCategory.get();
                 addItemsToProductGrid(allProductsByCategory.get());
                 formLayoutLastSelectedLevel.removeAll();
-                VerticalLayout verticalLayout = new VerticalLayout();
-                verticalLayout.setSizeFull();
-                verticalLayout.setSpacing(true);
-                verticalLayout.add(tfFilter,productGrid);
-                formLayoutLastSelectedLevel.add(verticalLayout);
+                showProductGrid();
             }
             else{
                 Notification.show("Geen materialen gevonden in dit level");
@@ -2036,6 +2126,7 @@ public class SelectProductSubView extends VerticalLayout {
     }
 
     private void addButtonsToVerticalButtonLayoutLevel3(Optional<List<ProductLevel3>> productLevel3sFromPreviousLevels) {
+        showButtonLayout();
         formLayoutLastSelectedLevel.removeAll();
         if (productLevel3sFromPreviousLevels.isPresent()) {
             for(ProductLevel3 productLevel3 : productLevel3sFromPreviousLevels.get()){
@@ -2056,13 +2147,7 @@ public class SelectProductSubView extends VerticalLayout {
                 productList = allProductsByCategory.get();
                 addItemsToProductGrid(allProductsByCategory.get());
                 formLayoutLastSelectedLevel.removeAll();
-                VerticalLayout verticalLayout = new VerticalLayout();
-                verticalLayout.setWidth("100%");
-                verticalLayout.setHeightFull();
-                verticalLayout.setSpacing(true);
-                verticalLayout.add(tfFilter,productGrid);
-                formLayoutLastSelectedLevel.add(verticalLayout);
-                formLayoutLastSelectedLevel.setColspan(verticalLayout,2);
+                showProductGrid();
             }
             else{
                 Notification.show("Geen materialen gevonden in dit level");
@@ -2072,6 +2157,7 @@ public class SelectProductSubView extends VerticalLayout {
     }
 
     private void addButtonsToVerticalButtonLayoutLevel4(Optional<List<ProductLevel4>> productLevel4sFromPreviousLevels) {
+        showButtonLayout();
         formLayoutLastSelectedLevel.removeAll();
         if (productLevel4sFromPreviousLevels.isPresent()) {
             for(ProductLevel4 productLevel4 : productLevel4sFromPreviousLevels.get()){
@@ -2092,13 +2178,7 @@ public class SelectProductSubView extends VerticalLayout {
                 productList = allProductsByCategory.get();
                 addItemsToProductGrid(allProductsByCategory.get());
                 formLayoutLastSelectedLevel.removeAll();
-                VerticalLayout verticalLayout = new VerticalLayout();
-                verticalLayout.setWidth("100%");
-                verticalLayout.setHeightFull();
-                verticalLayout.setSpacing(true);
-                verticalLayout.add(tfFilter,productGrid);
-                formLayoutLastSelectedLevel.add(verticalLayout);
-                formLayoutLastSelectedLevel.setColspan(verticalLayout,2);
+                showProductGrid();
             }
             else{
                 Notification.show("Geen materialen gevonden in dit level");
@@ -2107,6 +2187,7 @@ public class SelectProductSubView extends VerticalLayout {
     }
 
     private void addButtonsToVerticalButtonLayoutLevel5(Optional<List<ProductLevel5>> productLevel5sFromPreviousLevels) {
+        showButtonLayout();
         formLayoutLastSelectedLevel.removeAll();
         if (productLevel5sFromPreviousLevels.isPresent()) {
             for(ProductLevel5 productLevel5 : productLevel5sFromPreviousLevels.get()){
@@ -2127,12 +2208,7 @@ public class SelectProductSubView extends VerticalLayout {
                 productList = allProductsByCategory.get();
                 addItemsToProductGrid(allProductsByCategory.get());
                 formLayoutLastSelectedLevel.removeAll();
-                VerticalLayout verticalLayout = new VerticalLayout();
-                verticalLayout.setWidth("100%");
-                verticalLayout.setSpacing(true);
-                verticalLayout.add(tfFilter,productGrid);
-                formLayoutLastSelectedLevel.add(verticalLayout);
-                formLayoutLastSelectedLevel.setColspan(verticalLayout,2);
+                showProductGrid();
             }
             else{
                 Notification.show("Geen materialen gevonden in dit level");
@@ -2142,6 +2218,7 @@ public class SelectProductSubView extends VerticalLayout {
     }
 
     private void addButtonsToVerticalButtonLayoutLevel6(Optional<List<ProductLevel6>> productLevel6sFromPreviousLevels) {
+        showButtonLayout();
         formLayoutLastSelectedLevel.removeAll();
         if (productLevel6sFromPreviousLevels.isPresent()) {
             for(ProductLevel6 productLevel6 : productLevel6sFromPreviousLevels.get()){
@@ -2162,12 +2239,7 @@ public class SelectProductSubView extends VerticalLayout {
                 productList = allProductsByCategory.get();
                 addItemsToProductGrid(allProductsByCategory.get());
                 formLayoutLastSelectedLevel.removeAll();
-                VerticalLayout verticalLayout = new VerticalLayout();
-                verticalLayout.setHeightFull();
-                verticalLayout.setSpacing(true);;
-                verticalLayout.add(tfFilter,productGrid);
-                formLayoutLastSelectedLevel.add(verticalLayout);
-                formLayoutLastSelectedLevel.setColspan(verticalLayout,2);
+                showProductGrid();
             }
             else{
                 Notification.show("Geen materialen gevonden in dit level");
@@ -2177,6 +2249,7 @@ public class SelectProductSubView extends VerticalLayout {
     }
 
     private void addButtonsToVerticalButtonLayoutLevel7(Optional<List<ProductLevel7>> productLevel7sFromPreviousLevels) {
+        showButtonLayout();
         formLayoutLastSelectedLevel.removeAll();
         if (productLevel7sFromPreviousLevels.isPresent()) {
             for(ProductLevel7 productLevel7 : productLevel7sFromPreviousLevels.get()){
@@ -2197,13 +2270,7 @@ public class SelectProductSubView extends VerticalLayout {
                 productList = allProductsByCategory.get();
                 addItemsToProductGrid(allProductsByCategory.get());
                 formLayoutLastSelectedLevel.removeAll();
-                VerticalLayout verticalLayout = new VerticalLayout();
-                verticalLayout.setWidth("100%");
-                verticalLayout.setHeightFull();
-                verticalLayout.setSpacing(true);
-                verticalLayout.add(tfFilter,productGrid);
-                formLayoutLastSelectedLevel.add(verticalLayout);
-                formLayoutLastSelectedLevel.setColspan(verticalLayout,2);
+                showProductGrid();
             }
             else{
                 Notification.show("Geen materialen gevonden in dit level");
@@ -2221,6 +2288,8 @@ public class SelectProductSubView extends VerticalLayout {
         noNewPriceDialog.setCloseOnOutsideClick(true);
         noNewPriceDialog.setHeaderTitle(
                 String.format("Er is nieuwe prijs voor dit product in de database gevonden!"));
+        noNewPriceDialog.add(newPriceSpanAgro);
+        noNewPriceDialog.add(newPriceSpanIndustry);
         Button deleteButton = new Button("Neem niet over", (e) -> {
             Product product = selectedProductEditor.getItem();
             product.setNoRecentPriceApproved(true);
@@ -2252,7 +2321,6 @@ public class SelectProductSubView extends VerticalLayout {
             }
 
             //check if selected product is in a merged product -> if so change this and recalc
-            //TODO recalc merged products
             if(selectedProductList != null && selectedProductList.size() > 0){
                 List<Product>mergedProducts = selectedProductList.stream().filter(x -> (x.getMergedProducts() != null) && (x.getMergedProducts().size() > 0)).collect(Collectors.toList());
                 if(mergedProducts.size() > 0){
@@ -2294,6 +2362,21 @@ public class SelectProductSubView extends VerticalLayout {
             }
             noNewPriceDialog.close();
         });
+
+        noNewPriceDialog.addOpenedChangeListener(e -> {
+            newPriceSpanAgro.setText(String.format(
+                    "Oude prijs agro = %.2f €, Nieuwe prijs agro: %.2f €",
+                    selectedProductEditor.getItem().getSellPrice(),
+                    selectedProductEditor.getItem().getRecentAgroPrice()
+            ));
+            newPriceSpanIndustry.setText(String.format(
+                    "Oude prijs industrie = %.2f €, Nieuwe prijs industrie: %.2f €",
+                    selectedProductEditor.getItem().getSellPriceIndustry(),
+                    selectedProductEditor.getItem().getRecentIndustryPrice()
+            ));
+        });
+
+
         cancelButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
         noNewPriceDialog.getFooter().add(cancelButton);
         return noNewPriceDialog;
@@ -2367,11 +2450,20 @@ public class SelectProductSubView extends VerticalLayout {
                 clickEvent -> {
                     if(selectedProductList != null){
                         doubleSelectedProduct = null;
-                        dataView.removeItem(selectedProduct);
-                        dataView.setFilter(product ->
-                                product.getTeamNumber() == selectedTeam);
+                        //dataView.removeItem(selectedProduct);
+
+                        selectedProductList.remove(selectedProduct);
+
+                        dataView = selectedProductGrid.setItems(selectedProductList);
+
+                        if(this.userFunction.equals(UserFunction.TECHNICIAN)){
+                            dataView.setFilter(product ->
+                                    product.getTeamNumber() == selectedTeam);
+                        }
+
                         setTotalsInFooter();
                         eventPublisher.publishEvent(new AddRemoveProductEvent(this, "Product verwijderd", selectedProduct));
+
                         //check if delete event came from SetSubView -> so we need to check if product is in other sets
                         //if so the product needs to stay a setElement
                         if(selectedSet != null){
@@ -2674,14 +2766,9 @@ public class SelectProductSubView extends VerticalLayout {
                 selectedSet.getProductLevel7());
         if(productList != null){
             addItemsToProductGrid(productList);
-            productGrid.setAllRowsVisible(true);
+            productGrid.setAllRowsVisible(false);
             formLayoutLastSelectedLevel.removeAll();
-            VerticalLayout verticalLayout = new VerticalLayout();
-            verticalLayout.setSizeFull();
-            verticalLayout.setSpacing(true);
-            verticalLayout.add(tfFilter,productGrid);
-            formLayoutLastSelectedLevel.add(verticalLayout);
-            formLayoutLastSelectedLevel.setColspan(verticalLayout,2);
+            showProductGrid();
         }
     }
 
@@ -2692,6 +2779,18 @@ public class SelectProductSubView extends VerticalLayout {
             montagemateriaal.forEach(item -> item.setBoldMode(true));
         }
 
+        productList.forEach(product ->
+                product.setSelectedMode(
+                        selectedProductList.stream()
+                                .anyMatch(selected -> {
+                                    if(selected.getId() != null){
+                                        return selected.getId().equals(product.getId());
+                                    }
+                                    else return false;
+                                })
+                )
+        );
+
         productGrid.setItems(productList);
         if(userFunction.equals(userFunction.TECHNICIAN)){
             Boolean showImageColumn = productList.stream().anyMatch(product -> product.getImageList()!= null && !product.getImageList().isEmpty());
@@ -2701,6 +2800,46 @@ public class SelectProductSubView extends VerticalLayout {
             Boolean showSOColumn = productList.stream().anyMatch(product -> ((product.getSet() != null) && (product.getSet())) || ((product.getSetElement() != null) && (product.getSetElement())));
             soColumn.setVisible(showSOColumn);
         }
+    }
+
+    public void recalcSelectedItemsWithNewCustomer(){
+        if((selectedProductList != null) && (selectedProductList.size() > 0)){
+            selectedProductList.stream().forEach(product -> {
+                if(product.getBComment() == false){
+                    product.setTotalPrice(getTotalProductPrice(product));
+                }
+            });
+        }
+    }
+
+    private void showProductGrid() {
+
+        // The grid should NOT be placed inside the FormLayout.
+        // Replace the secondary content with a flex VerticalLayout instead.
+        secondaryLayout.removeAll();
+
+        productGridLayout = new VerticalLayout();
+        productGridLayout.setSizeFull();
+        productGridLayout.setPadding(false);
+        productGridLayout.setSpacing(false);
+        productGridLayout.getStyle()
+                .set("min-width", "0")
+                .set("min-height", "0");
+
+        tfFilter.setWidthFull();
+
+        productGrid.setWidthFull();
+        productGrid.setHeight(null);
+        productGrid.setAllRowsVisible(false);
+        productGrid.getStyle()
+                .set("min-width", "0")
+                .set("min-height", "0");
+
+        productGridLayout.add(tfFilter, productGrid);
+        productGridLayout.expand(productGrid);
+
+        secondaryLayout.add(productGridLayout);
+        secondaryLayout.expand(productGridLayout);
     }
 
     public void setSelectedCustmer(Customer custmer){

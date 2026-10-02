@@ -110,6 +110,9 @@ public class PaymentDialogView extends Div {
         paymentEditor.setBinder(paymentBinder);
 
         DatePicker datePicker = new DatePicker();
+        datePicker.setI18n(
+                new DatePicker.DatePickerI18n()
+                        .setFirstDayOfWeek(1));
         datePicker.setWidthFull();
         addCloseHandler(datePicker, paymentEditor);
         paymentBinder.forField(datePicker)

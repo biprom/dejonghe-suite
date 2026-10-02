@@ -38,7 +38,7 @@ import java.util.Optional;
 import java.util.Set;
 
 @PageTitle("Werkbon")
-@Route("werkbonnenLopende")
+@Route("")
 @Menu(order = 0, icon = LineAwesomeIconUrl.WRENCH_SOLID)
 @Component
 @Scope("prototype")

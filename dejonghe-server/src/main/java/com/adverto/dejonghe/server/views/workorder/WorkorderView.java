@@ -3,7 +3,6 @@ package com.adverto.dejonghe.server.views.workorder;
 import com.adverto.dejonghe.common.dbservices.*;
 import com.adverto.dejonghe.server.customEvents.AddProductEventListener;
 import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
-import com.adverto.dejonghe.server.views.subViews.toolsSubView.*;
 import com.adverto.dejonghe.common.entities.WorkOrder.BowlEntity;
 import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrder;
 import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrderHeader;
@@ -24,6 +23,7 @@ import com.adverto.dejonghe.common.entities.product.product.Product;
 import com.adverto.dejonghe.server.views.subViews.CurrentWorkOrdersSubView;
 import com.adverto.dejonghe.server.views.subViews.SelectProductSubView;
 import com.adverto.dejonghe.server.views.subViews.ShowImageSubVieuw;
+import com.adverto.dejonghe.server.views.subViews.toolsSubView.*;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
 import com.vaadin.flow.component.AttachEvent;
@@ -36,6 +36,7 @@ import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.combobox.MultiSelectComboBox;
+import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
@@ -84,7 +85,7 @@ import java.util.stream.Collectors;
 @PageTitle("Werkbon")
 @Route("werkbon")
 @Menu(order = 0, icon = LineAwesomeIconUrl.WRENCH_SOLID)
-public class WorkorderView extends VerticalLayout implements HasUrlParameter<String> {
+public class WorkorderView extends VerticalLayout implements HasUrlParameter<String>, BeforeLeaveObserver {
 
     private final InvoiceService invoiceService;
     EmployeeService employeeService;
@@ -180,6 +181,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
     Tabs buddyTab;
     Button addTabButton;
+    Button goBackButton;
 
     String linkParameter;
 
@@ -269,7 +271,10 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         setUpUpload();
         setUpShowImageButton();
         setUpSplitLayouts();
+
+        //hieronder feest!
         getWorkOrderHeader();
+
         formLayout.add(vLayoutHeaderLevel2Tabs);
         formLayout.add(vLayoutHeaderLevel3Tabs,2);
         formLayout.add(vLayoutHeaderLevel4Tabs,2);
@@ -279,7 +284,10 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         formLayout.add(vLayoutHeaderLevel8Tabs,2);
         VerticalLayout verticalLayout = new VerticalLayout();
         verticalLayout.setMargin(false);
-        verticalLayout.setWidth("100%");
+        verticalLayout.setWidthFull();
+        verticalLayout.setHeightFull();
+        verticalLayout.getStyle().set("overflow-y", "auto");
+        verticalLayout.getStyle().set("overflow-x", "hidden");
         verticalLayout.add(getMainButtons(),formLayout);
         headerSplitLayout.addToPrimary(verticalLayout);
         VerticalLayout vLayout = new VerticalLayout();
@@ -417,8 +425,10 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         }).setHeader("Draaiuren");
 
         bowlUitColumn = bowlGrid.addComponentColumn(item -> {
-            Checkbox checkbRemoved = new Checkbox(item.getBBowlRemoved());
-            checkbRemoved.setValue(item.getBBowlRemoved());
+            Checkbox checkbRemoved = new Checkbox();
+            if(item.getBBowlRemoved() != null){
+                checkbRemoved.setValue(item.getBBowlRemoved());
+            }
             checkbRemoved.getStyle().set("transform", "scale(1.5)");
             checkbRemoved.addValueChangeListener(event -> {
                 try {
@@ -460,8 +470,10 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         }).setHeader("Bowl nr. uit");
 
         bowlInColumn = bowlGrid.addComponentColumn(item -> {
-            Checkbox checkbBowlReplaced = new Checkbox(item.getBBowlReplaced());
-            checkbBowlReplaced.setValue(item.getBBowlReplaced());
+            Checkbox checkbBowlReplaced = new Checkbox();
+            if(item.getBBowlReplaced() != null){
+                checkbBowlReplaced.setValue(item.getBBowlReplaced());
+            }
             checkbBowlReplaced.getStyle().set("transform", "scale(1.5)");
             checkbBowlReplaced.addValueChangeListener(event -> {
                 try {
@@ -983,6 +995,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         finishButton.setWidth("50%");
         finishButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY,
                 ButtonVariant.LUMO_SUCCESS);
+        finishButton.setVisible(false);
         finishButton.addClickListener(e -> {
             finishWorkOrderDialog.open();
         });
@@ -996,7 +1009,13 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             try {
                 saveSelectedWorkOrder();
             } catch (ValidationException f) {
-                Notification.show("Kon de werkbon nog niet bewaren");
+                Notification notification = Notification.show(
+                        "Kan de werkbon nog niet bewaren, gelieve alles in te vullen aub",
+                        5000,
+                        Notification.Position.MIDDLE
+                );
+
+                notification.addThemeVariants(NotificationVariant.LUMO_ERROR);
             }
         });
     }
@@ -1037,6 +1056,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             InputStream inputStream = buffer.getInputStream(fileName);
             DBObject metaData = new BasicDBObject();
             metaData.put("timeOfUpload", LocalDateTime.now().toString());
+            metaData.put("workAddress", selectedWorkOrder.getWorkAddress());
             try {
                 storeImageIdToThisWorkOrder(gridFsTemplate.store(inputStream, fileName, "image/png", metaData).toString());
                 updateGetImageButton();
@@ -1136,6 +1156,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 .bind(WorkOrderHeader::getTunnelTax, WorkOrderHeader::setTunnelTax);
         workOrderHeaderBinder.addValueChangeListener(workOrderHeader -> {
             try {
+                updateFinishButtonVisibility();
                 saveSelectedWorkOrder();
             } catch (ValidationException e) {
                 Notification.show("Kon de werkbon nog niet bewaren");
@@ -1186,7 +1207,8 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 .bind(WorkOrder::getExtraEmployeesTeam4, WorkOrder::setExtraEmployeesTeam4);
         workOrderBinder.addValueChangeListener(workOrder -> {
             try {
-                BinderValidationStatus<WorkOrder> binderStatus = workOrderBinder.validate();
+
+                updateFinishButtonVisibility();
 
                 boolean workhoursValid = ((!selectedWorkOrderTimes.isEmpty()));
                 if(workhoursValid && workhoursValid) {
@@ -1199,6 +1221,28 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 Notification.show("Kon de werkbon nog niet bewaren");
             }
         });
+    }
+
+    private void updateFinishButtonVisibility() {
+
+        if (selectedWorkOrder == null) {
+            finishButton.setVisible(false);
+            return;
+        }
+
+        boolean isStarter = selectedWorkOrder.getStarter();
+
+        boolean workOrderValid =
+                workOrderBinder.validate().isOk();
+
+        boolean workOrderHeaderValid =
+                workOrderHeaderBinder.validate().isOk();
+
+        finishButton.setVisible(
+                isStarter
+                        && workOrderValid
+                        && workOrderHeaderValid
+        );
     }
 
     private void setUpSplitLayouts() {
@@ -1226,10 +1270,12 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         headerSplitLayout.setSplitterPosition(50);
         headerSplitLayout.setSizeFull();
         headerSplitLayout.setOrientation(SplitLayout.Orientation.VERTICAL);
+        headerSplitLayout.getStyle().set("overflow", "hidden");
 
-        headerSplitLayout.addSplitterDragendListener(event -> {
-            selectProductSubView.setSplitPosition(headerSplitLayout.getSplitterPosition());
-        });
+        headerSplitLayout.getElement()
+                .addEventListener("splitter-dragend", event -> {
+                    selectProductSubView.setSplitPosition(headerSplitLayout.getSplitterPosition());
+                });
     }
 
     private void updateSidebar() {
@@ -1245,7 +1291,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
     private FormLayout getWorkOrderHeader() {
         formLayout = new FormLayout();
-        formLayout.setSizeFull();
+        //formLayout.setSizeFull();
         //formLayout.setRowSpacing("1px");
         //formLayout.setColumnSpacing("1px");
         formLayout.add(getFirstStepHeader());
@@ -1293,32 +1339,32 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
     private ComboBox<WorkLocation> getLocationComboBox() {
         vLayoutHeaderLevel2Tabs = new VerticalLayout();
-        vLayoutHeaderLevel2Tabs.setSizeFull();
+        //vLayoutHeaderLevel2Tabs.setSizeFull();
         vLayoutHeaderLevel2Tabs.setVisible(false);
 
         vLayoutHeaderLevel3Tabs = new VerticalLayout();
-        vLayoutHeaderLevel3Tabs.setSizeFull();
+        //vLayoutHeaderLevel3Tabs.setSizeFull();
         vLayoutHeaderLevel3Tabs.setVisible(false);
 
         vLayoutHeaderLevel4Tabs = new VerticalLayout();
-        vLayoutHeaderLevel4Tabs.setSizeFull();
+        //vLayoutHeaderLevel4Tabs.setSizeFull();
         vLayoutHeaderLevel4Tabs.setVisible(false);
 
         vLayoutHeaderLevel5Tabs = new VerticalLayout();
-        vLayoutHeaderLevel5Tabs.setSizeFull();
+        //vLayoutHeaderLevel5Tabs.setSizeFull();
         vLayoutHeaderLevel5Tabs.setVisible(false);
 
         vLayoutHeaderLevel6Tabs = new VerticalLayout();
-        vLayoutHeaderLevel6Tabs.setSizeFull();
-        vLayoutHeaderLevel6Tabs.setHeightFull();
+        //vLayoutHeaderLevel6Tabs.setSizeFull();
+        //vLayoutHeaderLevel6Tabs.setHeightFull();
         vLayoutHeaderLevel6Tabs.setVisible(true);
 
         vLayoutHeaderLevel7Tabs = new VerticalLayout();
-        vLayoutHeaderLevel7Tabs.setSizeFull();
+        //vLayoutHeaderLevel7Tabs.setSizeFull();
         vLayoutHeaderLevel7Tabs.setVisible(false);
 
         vLayoutHeaderLevel8Tabs = new VerticalLayout();
-        vLayoutHeaderLevel8Tabs.setSizeFull();
+        //vLayoutHeaderLevel8Tabs.setSizeFull();
         vLayoutHeaderLevel8Tabs.setVisible(false);
 
         locationComboBox = new ComboBox<>();
@@ -2054,6 +2100,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         horizontalLayout.setSpacing(true);
 
         Button searchRunningWorkorders = new Button("Zoek Werkbon");
+        searchRunningWorkorders.setVisible(false);
         searchRunningWorkorders.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         searchRunningWorkorders.addClickListener(e -> {
             Optional<List<WorkOrder>> allPendingStarters = workOrderService.getAllByStatusAndStarter(WorkOrderStatus.RUNNING, true);
@@ -2079,13 +2126,52 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             }
         });
 
+        goBackButton = new Button(VaadinIcon.BACKWARDS.create());
+        goBackButton.addClickListener(e -> {
+
+            if (!isWorkOrderComplete()) {
+                showLeaveWarning(() ->
+                        UI.getCurrent().getPage().executeJs("history.back();")
+                );
+            } else {
+                UI.getCurrent().getPage().executeJs("history.back();");
+            }
+        });
+
         horizontalLayout.add(slideButton);
+        horizontalLayout.add(goBackButton);
         horizontalLayout.add(addTabButton);
         horizontalLayout.add(buddyTab);
         horizontalLayout.add(searchRunningWorkorders);
         horizontalLayout.setAlignSelf(FlexComponent.Alignment.END, searchRunningWorkorders);
 
         return horizontalLayout;
+    }
+
+    private boolean isWorkOrderComplete() {
+        return selectedWorkOrder != null
+                && workOrderBinder.validate().isOk()
+                && workOrderHeaderBinder.validate().isOk();
+    }
+
+    private void showLeaveWarning(Runnable leaveAction) {
+
+        ConfirmDialog dialog = new ConfirmDialog();
+
+        dialog.setHeader("Werkbon niet volledig ingevuld");
+        dialog.setText(
+                "Deze werkbon is nog niet volledig ingevuld. " +
+                        "Als je deze pagina verlaat, kunnen gegevens verloren gaan."
+        );
+
+        dialog.setCancelText("Blijven");
+        dialog.setCancelable(true);
+
+        dialog.setConfirmText("Toch verlaten");
+
+        dialog.addConfirmListener(e -> leaveAction.run());
+
+        dialog.open();
     }
 
     private DatePicker getDatePicker() {
@@ -2283,6 +2369,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         selectProductSubView.setSelectedTeam(selectedTeam-1);
         selectProductSubView.setSelectedProductList(selectedWorkOrder.getProductList());
         addTabButton.setEnabled(true);
+        updateFinishButtonVisibility();
     }
 
     private void readNewWorkOrder() {
@@ -2337,7 +2424,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(0).getBowlEntityList());
         selectProductSubView.setSelectedProductList(selectedWorkOrder.getProductList());
         addTabButton.setEnabled(false);
-        finishButton.setVisible(true);
+        updateFinishButtonVisibility();
         saveWorkOrderButton.setVisible(true);
     }
 
@@ -2350,10 +2437,27 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         newWorkOrder.setWorkLocation(selectedWorkOrder.getWorkLocation());
 
         newWorkOrder.setLinkedWorkOrders(new ArrayList<>());
-        newWorkOrder.setMasterEmployeeTeam1(starterWorkOrder.getMasterEmployeeTeam1());
 
         WorkOrderHeader newWorkOrderHeader1 = new WorkOrderHeader();
-        newWorkOrderHeader1.setDescription(selectedWorkOrder.getWorkOrderHeaderList().get(0).getDescription());
+
+        String description = selectedWorkOrder
+                .getWorkOrderHeaderList()
+                .get(0)
+                .getDescription();
+
+        if (description != null && !description.isBlank()) {
+            int index = description.indexOf('.');
+
+            String firstSentence = index >= 0
+                    ? description.substring(0, index + 1).trim()
+                    : description.trim();
+
+            newWorkOrderHeader1.setDescription(firstSentence);
+        }
+        else{
+            newWorkOrderHeader1.setDescription("");
+        }
+
         newWorkOrderHeader1.setWorkType(selectedWorkOrder.getWorkOrderHeaderList().get(0).getWorkType());
         WorkOrderHeader newWorkOrderHeader2 = new WorkOrderHeader();
         WorkOrderHeader newWorkOrderHeader3 = new WorkOrderHeader();
@@ -2509,22 +2613,27 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             buddyTab.setSelectedTab(parentTab);
 
             //Try to add ChildrenTab
-            selectedCoupledWorkOrders.stream().filter(item -> item.getStarter() == false).forEach(item -> {
-                Tab childTab = new Tab();
-                childTab.setLabel(item.getWorkDateTime().format(DateTimeFormatter.ofPattern("dd/MM")));
-                childTab.getElement().setProperty("workOrderId", item.getId());
-                buddyTab.add(childTab);
-            });
+            selectedCoupledWorkOrders.stream()
+                    .filter(item -> item.getStarter() == false)
+                    .sorted(Comparator.comparing(WorkOrder::getWorkDateTime))
+                    .forEach(item -> {
+
+                        Tab childTab = new Tab();
+
+                        childTab.setLabel(
+                                item.getWorkDateTime()
+                                        .format(DateTimeFormatter.ofPattern("dd/MM"))
+                        );
+
+                        childTab.getElement()
+                                .setProperty("workOrderId", item.getId());
+
+                        buddyTab.add(childTab);
+                    });
 
             buddyTab.addSelectedChangeListener(event -> {
                 if(event.isFromClient()){
                     Tab selectedTab = buddyTab.getSelectedTab();
-                    if(selectedTab.equals(parentTab)){
-                        finishButton.setVisible(true);
-                    }
-                    else{
-                        finishButton.setVisible(false);
-                    }
                     setSelectedWorkOrder(workOrderService.getWorkOrderById(selectedTab.getElement().getProperty("workOrderId")).get());
                 }
             });
@@ -2555,6 +2664,57 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 readNewWorkOrder();
             }
         }
+    }
+
+    @Override
+    public void beforeLeave(BeforeLeaveEvent event) {
+
+        if (selectedWorkOrder == null) {
+            return;
+        }
+
+        boolean workOrderValid =
+                workOrderBinder != null
+                        && workOrderBinder.validate().isOk();
+
+        boolean headerValid =
+                workOrderHeaderBinder != null
+                        && workOrderHeaderBinder.validate().isOk();
+
+        boolean complete = workOrderValid && headerValid;
+
+        if (complete) {
+            return;
+        }
+
+        BeforeLeaveEvent.ContinueNavigationAction action =
+                event.postpone();
+
+        ConfirmDialog dialog = new ConfirmDialog();
+
+        dialog.setHeader("Werkbon niet volledig ingevuld");
+
+        dialog.setText(
+                "Deze werkbon is nog niet volledig ingevuld. " +
+                        "Als je deze pagina verlaat, kunnen niet-bewaarde gegevens verloren gaan."
+        );
+
+        dialog.setCancelText("Blijven");
+        dialog.setCancelable(true);
+
+        dialog.setConfirmText("Toch verlaten");
+
+        // User wants to leave
+        dialog.addConfirmListener(e -> {
+            action.proceed();
+        });
+
+        // User wants to stay
+        dialog.addCancelListener(e -> {
+            action.cancel();
+        });
+
+        dialog.open();
     }
 }
 

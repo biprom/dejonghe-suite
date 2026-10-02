@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2000-2025 Vaadin Ltd.
+ * Copyright 2000-2026 Vaadin Ltd.
  *
  * This program is available under Vaadin Commercial License and Service Terms.
  *
@@ -8,21 +8,29 @@
  * license.
  */
 import Feature from 'ol/Feature';
+import LineString from 'ol/geom/LineString';
 import Point from 'ol/geom/Point';
 import Polygon from 'ol/geom/Polygon';
 import Fill from 'ol/style/Fill';
 import Stroke from 'ol/style/Stroke';
 import Text from 'ol/style/Text';
 import View from 'ol/View';
-import { synchronizeImageLayer, synchronizeTileLayer, synchronizeVectorLayer } from './layers.js';
+import { synchronizeAttribution, synchronizeScaleLine, synchronizeZoom } from './controls.js';
 import {
+  synchronizeFeatureLayer,
+  synchronizeImageLayer,
+  synchronizeTileLayer,
+  synchronizeVectorLayer
+} from './layers.js';
+import {
+  synchronizeCluster,
   synchronizeImageWMSSource,
   synchronizeOSMSource,
   synchronizeTileWMSSource,
   synchronizeVectorSource,
   synchronizeXYZSource
 } from './sources.js';
-import { synchronizeIcon, synchronizeFill, synchronizeStroke, synchronizeText, synchronizeStyle } from './styles.js';
+import { synchronizeIcon, synchronizeFill, synchronizeStroke, synchronizeStyle, synchronizeText } from './styles.js';
 import { convertToCoordinateArray, convertToGeoJSONCoordinateArray, synchronizeCollection } from './util.js';
 
 /**
@@ -41,6 +49,7 @@ function synchronizeMap(target, source, context) {
   }
 
   synchronizeCollection(target.getLayers(), source.layers, context);
+  synchronizeCollection(target.getControls(), source.visibleControls, context);
   target.setView(context.lookup.get(source.view));
 
   return target;
@@ -56,6 +65,16 @@ function synchronizeView(target, source, _context) {
   target.setCenter(source.center ? convertToCoordinateArray(source.center) : [0, 0]);
   target.setRotation(source.rotation || 0);
   target.setZoom(source.zoom || 0);
+
+  return target;
+}
+
+function synchronizeLineString(target, source, _context) {
+  if (!target) {
+    target = new LineString(source.coordinates.map((coord) => convertToCoordinateArray(coord)));
+  }
+
+  target.setCoordinates(source.coordinates.map((coord) => convertToCoordinateArray(coord)));
 
   return target;
 }
@@ -121,16 +140,19 @@ const synchronizerLookup = {
   'ol/Map': synchronizeMap,
   'ol/View': synchronizeView,
   // Layers
+  'ol/layer/Feature': synchronizeFeatureLayer,
   'ol/layer/Image': synchronizeImageLayer,
   'ol/layer/Tile': synchronizeTileLayer,
   'ol/layer/Vector': synchronizeVectorLayer,
   // Sources
+  'ol/source/Cluster': synchronizeCluster,
   'ol/source/ImageWMS': synchronizeImageWMSSource,
   'ol/source/OSM': synchronizeOSMSource,
   'ol/source/TileWMS': synchronizeTileWMSSource,
   'ol/source/Vector': synchronizeVectorSource,
   'ol/source/XYZ': synchronizeXYZSource,
   // Geometry
+  'ol/geom/LineString': synchronizeLineString,
   'ol/geom/Point': synchronizePoint,
   'ol/geom/Polygon': synchronizePolygon,
   // Styles
@@ -138,7 +160,11 @@ const synchronizerLookup = {
   'ol/style/Fill': synchronizeFill,
   'ol/style/Stroke': synchronizeStroke,
   'ol/style/Style': synchronizeStyle,
-  'ol/style/Text': synchronizeText
+  'ol/style/Text': synchronizeText,
+  // Controls
+  'ol/control/Attribution': synchronizeAttribution,
+  'ol/control/ScaleLine': synchronizeScaleLine,
+  'ol/control/Zoom': synchronizeZoom
 };
 
 /**

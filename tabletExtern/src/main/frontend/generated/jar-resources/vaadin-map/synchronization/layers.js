@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2000-2025 Vaadin Ltd.
+ * Copyright 2000-2026 Vaadin Ltd.
  *
  * This program is available under Vaadin Commercial License and Service Terms.
  *
@@ -48,13 +48,47 @@ export function synchronizeVectorLayer(target, source, context) {
     target = new VectorLayer(
       createOptions({
         ...source,
-        source: context.lookup.get(source.source)
+        source: context.lookup.get(source.source),
+        style: undefined
       })
     );
   }
 
   synchronizeLayer(target, source);
   target.setSource(context.lookup.get(source.source));
+
+  return target;
+}
+
+export function synchronizeFeatureLayer(target, source, context) {
+  target = synchronizeVectorLayer(target, source, context);
+
+  const clusterStyle = context.lookup.get(source.clusterStyle);
+
+  target.setStyle((feature) => {
+    const size = feature.get('features').length;
+
+    // When rendering a single feature, use the feature's style
+    if (size === 1) {
+      const originalFeature = feature.get('features')[0];
+      let originalStyle = originalFeature.getStyle();
+      if (typeof originalStyle === 'function') {
+        originalStyle = originalStyle(originalFeature);
+      }
+      if (originalStyle) {
+        return originalStyle;
+      }
+    }
+
+    // Multiple features indicate a cluster
+    const textStyle = clusterStyle ? clusterStyle.getText() : null;
+    if (textStyle) {
+      // Override the text to show the number of features in the cluster
+      textStyle.setText(size.toString());
+    }
+
+    return clusterStyle;
+  });
 
   return target;
 }

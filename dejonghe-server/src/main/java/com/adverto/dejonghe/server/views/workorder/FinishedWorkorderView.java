@@ -260,7 +260,6 @@ public class FinishedWorkorderView extends VerticalLayout implements BeforeEnter
         return event -> {
             Optional<Set<WorkOrder>> selectedWorkOrders = currtentWorkOrdersSubVieuw.getSelectedWorkOrders();
             if (selectedWorkOrders.isPresent()) {
-
                 Invoice invoice = createOngoingInvoiceService.getnerateInvoicePerDay(selectedWorkOrders.get());
                 invoiceService.save(invoice);
                 //set SelectedWorkOrders as invoiced

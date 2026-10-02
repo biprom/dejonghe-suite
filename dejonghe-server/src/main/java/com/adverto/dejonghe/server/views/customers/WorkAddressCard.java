@@ -6,7 +6,7 @@ import com.adverto.dejonghe.common.entities.customers.Address;
 import com.adverto.dejonghe.common.entities.customers.Contact;
 import com.adverto.dejonghe.common.entities.customers.Coordinates;
 import com.adverto.dejonghe.common.entities.customers.Customer;
-import com.adverto.dejonghe.server.views.customers.installation.InstallationView;
+import com.adverto.dejonghe.server.views.customers.workAddress.WorkAddressView;
 import com.adverto.dejonghe.server.views.invoice.NewInvoiceView;
 import com.adverto.dejonghe.server.views.quote.QuoteView;
 import com.adverto.dejonghe.server.views.workorder.WorkorderView;
@@ -204,7 +204,7 @@ public class WorkAddressCard extends Card {
 
 
         VerticalLayout dialogLayout = new VerticalLayout(nameField,
-                streetField,zipField,cityField,countryField,coordinatesLayout,distanceLayout,tfRoadTaxAtego,tfRoadTaxActros,tfRoadArocs);
+                streetField,zipField,cityField,countryField,coordinatesLayout,distanceLayout,tfRoadTaxAtego,tfRoadArocs,tfRoadTaxActros);
         dialogLayout.setPadding(false);
         dialogLayout.setSpacing(false);
         dialogLayout.setAlignItems(FlexComponent.Alignment.STRETCH);
@@ -506,7 +506,7 @@ public class WorkAddressCard extends Card {
                 parameters.put(
                         "workAddressName", List.of(workAddress.getAddressName()));
                 UI.getCurrent().navigate(
-                        InstallationView.class,
+                        WorkAddressView.class,
                         new QueryParameters(parameters)
                 );
             });
@@ -521,7 +521,7 @@ public class WorkAddressCard extends Card {
                     parameters.put(
                             "workAddressName",List.of(workAddress.getAddressName()));
                     UI.getCurrent().navigate(
-                            InstallationView.class,
+                            WorkAddressView.class,
                             new QueryParameters(parameters)
                     );
                 }

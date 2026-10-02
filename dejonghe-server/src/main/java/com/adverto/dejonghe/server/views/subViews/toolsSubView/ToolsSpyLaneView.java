@@ -1,11 +1,11 @@
 package com.adverto.dejonghe.server.views.subViews.toolsSubView;
 
-import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.adverto.dejonghe.common.dbservices.ProductService;
 import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.enums.workorder.SpyLaneMaterial;
 import com.adverto.dejonghe.common.entities.enums.workorder.Tools;
 import com.adverto.dejonghe.common.entities.product.product.Product;
+import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;

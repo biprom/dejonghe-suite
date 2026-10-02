@@ -18,7 +18,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
@@ -196,33 +195,45 @@ public class WorkOrderPdfServices {
             parameters.put("showTeam4", false);
         }
 
-        try {
-            parameters.put("commentTeam1", workOrder.getWorkOrderHeaderList().get(0).getDescription());
-        }
-        catch (Exception e){
-            parameters.put("commentTeam1", null);
-        }
+        List<WorkOrderHeader> headers = workOrder.getWorkOrderHeaderList();
 
-        try {
-            parameters.put("commentTeam2", workOrder.getWorkOrderHeaderList().get(1).getDescription());
-        }
-        catch (Exception e){
-            parameters.put("commentTeam2", null);
-        }
+        String commentTeam1 = headers.size() > 0
+                ? headers.get(0).getDescription()
+                : null;
 
-        try {
-            parameters.put("commentTeam3", workOrder.getWorkOrderHeaderList().get(2).getDescription());
-        }
-        catch (Exception e){
-            parameters.put("commentTeam3", null);
-        }
+        String commentTeam2 = headers.size() > 1
+                ? headers.get(1).getDescription()
+                : null;
 
-        try {
-            parameters.put("commentTeam4", workOrder.getWorkOrderHeaderList().get(3).getDescription());
-        }
-        catch (Exception e){
-            parameters.put("commentTeam4", null);
-        }
+        String commentTeam3 = headers.size() > 2
+                ? headers.get(2).getDescription()
+                : null;
+
+        String commentTeam4 = headers.size() > 3
+                ? headers.get(3).getDescription()
+                : null;
+
+
+        boolean team2Same = Objects.equals(
+                normalizeComment(commentTeam2),
+                normalizeComment(commentTeam1)
+        );
+
+        boolean team3Same = Objects.equals(
+                normalizeComment(commentTeam3),
+                normalizeComment(commentTeam2)
+        );
+
+        boolean team4Same = Objects.equals(
+                normalizeComment(commentTeam4),
+                normalizeComment(commentTeam3)
+        );
+
+
+        parameters.put("commentTeam1", commentTeam1);
+        parameters.put("commentTeam2", team2Same ? "" : commentTeam2);
+        parameters.put("commentTeam3", team3Same ? "" : commentTeam3);
+        parameters.put("commentTeam4", team4Same ? "" : commentTeam4);
 
         TeamImplementation teamImplementation1 = new TeamImplementation(generateTeam1List(workOrder));
         parameters.put( "TeamDataSource1", teamImplementation1);
@@ -262,7 +273,6 @@ public class WorkOrderPdfServices {
             }
         }
 
-
         try {
             jasperPrint  = JasperFillManager.fillReport(jasperReport, parameters, new JREmptyDataSource(  ));
         } catch (Exception e) {
@@ -282,6 +292,16 @@ public class WorkOrderPdfServices {
         }
 
         return ""+ formatted+".pdf";
+    }
+
+    private String normalizeComment(String comment) {
+        if (comment == null) {
+            return null;
+        }
+
+        return comment
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     private List<Team> generateTeam1List(WorkOrder workOrder) {
@@ -422,21 +442,25 @@ public class WorkOrderPdfServices {
             List<WorkOrderTimePdfDTO>workOrderTimePdfDTOList = new ArrayList<>();
             for(int i = 0; i < workOrderTimeList.size(); i++){
                 WorkOrderTimePdfDTO workOrderTimePdfDTO = new WorkOrderTimePdfDTO();
-                if((workOrderTimeList.get(i).getTimeStart() != null) &&  (!(workOrderTimeList.get(i).getTimeStart().equals(LocalTime.MIDNIGHT)))){
-                    workOrderTimePdfDTO.setStart(workOrderTimeList.get(i).getTimeStart().format(DateTimeFormatter.ofPattern("HH:mm")));
-                }
-                else{
-                    workOrderTimePdfDTO.setStart(workOrderTimeList.get(i).getTimeUp().format(DateTimeFormatter.ofPattern("HH:mm")));
+
+                if((workOrderTimeList.get(i).getTimeUp() != null)){
+                    workOrderTimePdfDTO.setDeparture(workOrderTimeList.get(i).getTimeUp().format(DateTimeFormatter.ofPattern("HH:mm")));
                 }
 
-                if((workOrderTimeList.get(i).getTimeDown() != null) &&  (!(workOrderTimeList.get(i).getTimeDown().equals(LocalTime.MIDNIGHT)))){
-                    workOrderTimePdfDTO.setEnd(workOrderTimeList.get(i).getTimeDown().format(DateTimeFormatter.ofPattern("HH:mm")));
+                if((workOrderTimeList.get(i).getTimeStart() != null)){
+                    workOrderTimePdfDTO.setStart(workOrderTimeList.get(i).getTimeStart().format(DateTimeFormatter.ofPattern("HH:mm")));
                 }
-                else{
-                    workOrderTimePdfDTO.setEnd(workOrderTimeList.get(i).getTimeStop().format(DateTimeFormatter.ofPattern("HH:mm")));
-                }
+
                 if(workOrderTimeList.get(i).getPauze() != null){
                     workOrderTimePdfDTO.setPause(String.valueOf(workOrderTimeList.get(i).getPauze()));
+                }
+
+                if((workOrderTimeList.get(i).getTimeStop() != null)){
+                    workOrderTimePdfDTO.setEnd(workOrderTimeList.get(i).getTimeStop().format(DateTimeFormatter.ofPattern("HH:mm")));
+                }
+
+                if((workOrderTimeList.get(i).getTimeDown() != null)){
+                    workOrderTimePdfDTO.setBack(workOrderTimeList.get(i).getTimeDown().format(DateTimeFormatter.ofPattern("HH:mm")));
                 }
                 workOrderTimePdfDTOList.add(workOrderTimePdfDTO);
             }

@@ -46,7 +46,7 @@ public class EmployeeCard extends Card {
 
         Div title = new Div(employee.getFirstName() + " " + employee.getLastName());
         title.addClassName("card-title");
-        this.setTitle(title);
+        this.add(title);
 
         Div subtitle = new Div(new Text(employee.getPhoneNumber()));
         subtitle.addClassName("card-subtitle");

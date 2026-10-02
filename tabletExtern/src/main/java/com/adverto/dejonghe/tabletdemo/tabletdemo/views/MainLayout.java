@@ -1,6 +1,8 @@
 package com.adverto.dejonghe.tabletdemo.tabletdemo.views;
 
+import com.adverto.dejonghe.common.entities.updateVersion.UpdateStatus;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.services.SyncService;
+import com.adverto.dejonghe.tabletdemo.tabletdemo.services.TabletUpdateService;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.views.articles.ImportArticleViewNieuw;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.views.customers.CustomerDashboardView;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.views.workorder.PendingWorkorderView;
@@ -10,6 +12,7 @@ import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.applayout.DrawerToggle;
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.Image;
 import com.vaadin.flow.component.html.Span;
@@ -23,6 +26,8 @@ import com.vaadin.flow.component.orderedlayout.Scroller;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.sidenav.SideNav;
 import com.vaadin.flow.component.sidenav.SideNavItem;
+import com.vaadin.flow.router.AfterNavigationEvent;
+import com.vaadin.flow.router.AfterNavigationObserver;
 import com.vaadin.flow.router.Layout;
 import com.vaadin.flow.server.auth.AnonymousAllowed;
 import com.vaadin.flow.server.menu.MenuConfiguration;
@@ -30,6 +35,7 @@ import com.vaadin.flow.theme.lumo.Lumo;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.weaver.ast.Not;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
@@ -43,7 +49,11 @@ import java.util.Map;
 @Slf4j
 @Layout
 @AnonymousAllowed
-public class MainLayout extends AppLayout {
+public class MainLayout extends AppLayout implements AfterNavigationObserver {
+
+    private final TabletUpdateService tabletUpdateService;
+
+    private final Div updateIndicator = new Div();
 
     private H1 viewTitle;
 
@@ -62,16 +72,13 @@ public class MainLayout extends AppLayout {
     @Value("${feature.sync.enabled:true}")
     private boolean syncEnabled;
 
-    public MainLayout(SyncService syncService) {
+    public MainLayout(SyncService syncService,
+                      TabletUpdateService tabletUpdateService) {
 
         this.syncService = syncService;
+        this.tabletUpdateService = tabletUpdateService;
 
         UI.getCurrent().setLocale(new Locale("nl", "BE"));
-        System.out.println("Default locale: " + Locale.getDefault());
-        System.out.println("Language: " + Locale.getDefault().getLanguage());
-        System.out.println("Country: " + Locale.getDefault().getCountry());
-        System.out.println("Decimal separator: " +
-                DecimalFormatSymbols.getInstance().getDecimalSeparator());
         setUpNavBar();
         setPrimarySection(Section.DRAWER);
         addHeaderContent();
@@ -89,24 +96,174 @@ public class MainLayout extends AppLayout {
     }
 
     private void addHeaderContent() {
+
+        // Update indicator
+        updateIndicator.setWidth("60px");
+        updateIndicator.setHeight("60px");
+        updateIndicator.setMinWidth("60px");
+        updateIndicator.setMinHeight("60px");
+
+        updateIndicator.getStyle()
+                .set("position", "relative")
+                .set("border-radius", "50%")
+                .set("display", "inline-block")
+                .set("box-sizing", "border-box")
+                .set("transition", "all 0.3s ease");
+
+        /*
+         * Witte glans bovenaan de LED
+         */
+        Div shine = new Div();
+        shine.setWidth("25px");
+        shine.setHeight("16px");
+
+        shine.getStyle()
+                .set("position", "absolute")
+                .set("top", "8px")
+                .set("left", "10px")
+                .set("border-radius", "50%")
+                .set("background",
+                        "radial-gradient(ellipse, " +
+                                "rgba(255,255,255,0.90) 0%, " +
+                                "rgba(255,255,255,0.45) 45%, " +
+                                "rgba(255,255,255,0) 75%)")
+                .set("filter", "blur(1px)")
+                .set("pointer-events", "none");
+
+        updateIndicator.add(shine);
+
+        HorizontalLayout statusLayout = new HorizontalLayout();
+        statusLayout.setSpacing(true);
+        statusLayout.getStyle()
+                .set("margin-right", "20px");
+        statusLayout.setAlignItems(FlexComponent.Alignment.CENTER);
+
+        Span softwareText = new Span("Software");
+        softwareText.getStyle()
+                .set("font-size", "20px")
+                .set("font-weight", "500")
+                .set("color", "#5d5b5e");
+
+        statusLayout.add(
+                softwareText,
+                updateIndicator
+        );
+
+        updateUpdateIndicator();
+
         toggle = new DrawerToggle();
-        toggle.getElement().getStyle().set("color", "#4e4a47");
+        toggle.getElement().getStyle()
+                .set("color", "#4e4a47");
+
         toggle.setAriaLabel("Menu toggle");
         toggle.addClassName("large-toggle");
 
+
         viewTitle = new H1();
-        viewTitle.getElement().getStyle().set("font-size", "30px");
-        viewTitle.getElement().getStyle().set("color", "#5d5b5e");
-        viewTitle.addClassNames(LumoUtility.FontSize.LARGE, LumoUtility.Margin.NONE);
-        viewTitle.setWhiteSpace(HasText.WhiteSpace.NOWRAP);
+
+        viewTitle.getElement().getStyle()
+                .set("font-size", "30px")
+                .set("color", "#5d5b5e");
+
+        viewTitle.addClassNames(
+                LumoUtility.FontSize.LARGE,
+                LumoUtility.Margin.NONE
+        );
+
+        viewTitle.setWhiteSpace(
+                HasText.WhiteSpace.NOWRAP
+        );
+
 
         subMenusLayout = new HorizontalLayout();
         subMenusLayout.setSpacing(true);
-        subMenusLayout.setWidth("100%");
 
-        navbar.add(toggle,viewTitle, subMenusLayout);
+        Div spacer = new Div();
+
+        navbar.add(
+                toggle,
+                viewTitle,
+                subMenusLayout,
+                spacer,
+                statusLayout
+        );
+
+        navbar.expand(spacer);
+
         addToNavbar(true, navbar);
+    }
 
+    private void updateUpdateIndicator() {
+
+        if (tabletUpdateService.isUpdateAvailable()) {
+
+            setUpdateIndicatorRed();
+
+            updateIndicator.setTitle(
+                    "Update beschikbaar: "
+                            + tabletUpdateService.getLatestVersion()
+            );
+
+        } else {
+
+            setUpdateIndicatorGreen();
+
+            updateIndicator.setTitle(
+                    "Tablet is up-to-date"
+            );
+        }
+    }
+
+    private void setUpdateIndicatorGreen() {
+
+        updateIndicator.getStyle()
+                .set(
+                        "background",
+                        "radial-gradient(circle at 35% 30%, " +
+                                "#d8ffd8 0%, " +
+                                "#70ff70 12%, " +
+                                "#25e625 35%, " +
+                                "#08b408 65%, " +
+                                "#046504 100%)"
+                )
+                .set(
+                        "box-shadow",
+                        "0 0 5px rgba(0,255,0,0.9), " +
+                                "0 0 14px rgba(0,255,0,0.65), " +
+                                "0 0 25px rgba(0,255,0,0.25), " +
+                                "inset 5px 5px 9px rgba(255,255,255,0.35), " +
+                                "inset -7px -9px 12px rgba(0,0,0,0.35)"
+                )
+                .set(
+                        "border",
+                        "2px solid rgba(0,100,0,0.7)"
+                );
+    }
+
+    private void setUpdateIndicatorRed() {
+
+        updateIndicator.getStyle()
+                .set(
+                        "background",
+                        "radial-gradient(circle at 35% 30%, " +
+                                "#ffd6d6 0%, " +
+                                "#ff7777 12%, " +
+                                "#ff2828 35%, " +
+                                "#d40000 65%, " +
+                                "#760000 100%)"
+                )
+                .set(
+                        "box-shadow",
+                        "0 0 5px rgba(255,0,0,0.9), " +
+                                "0 0 14px rgba(255,0,0,0.65), " +
+                                "0 0 25px rgba(255,0,0,0.25), " +
+                                "inset 5px 5px 9px rgba(255,255,255,0.35), " +
+                                "inset -7px -9px 12px rgba(0,0,0,0.35)"
+                )
+                .set(
+                        "border",
+                        "2px solid rgba(120,0,0,0.7)"
+                );
     }
 
     private void addDrawerContent() {
@@ -152,6 +309,36 @@ public class MainLayout extends AppLayout {
                 syncService.syncProductFolders5();
                 syncService.syncProductFolders6();
                 syncService.syncProductFolders7();
+
+                try {
+
+                    UpdateStatus status = syncService.checkForUpdate();
+
+                    if (status != null) {
+
+                        tabletUpdateService.setVersionStatus(
+                                true,
+                                status.isUpdateAvailable(),
+                                status.getLatestVersion()
+                        );
+
+                    } else {
+
+                        tabletUpdateService.setVersionStatus(
+                                false,
+                                true,
+                                null
+                        );
+                    }
+
+                } catch (Exception e) {
+
+                    tabletUpdateService.setVersionStatus(
+                            false,
+                            true,
+                            null
+                    );
+                }
                 Notification.show("Synchronisatie Artikelmappen beïndigd");
 
                 Notification.show("Synchronisatie Personeel gestart");
@@ -263,13 +450,12 @@ public class MainLayout extends AppLayout {
         return layout;
     }
 
-    @Override
-    protected void afterNavigation() {
-        super.afterNavigation();
-        viewTitle.setText(getCurrentPageTitle());
-    }
-
     private String getCurrentPageTitle() {
         return MenuConfiguration.getPageHeader(getContent()).orElse("");
+    }
+
+    @Override
+    public void afterNavigation(AfterNavigationEvent event) {
+        viewTitle.setText(getCurrentPageTitle());
     }
 }

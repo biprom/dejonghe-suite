@@ -600,9 +600,13 @@ public class CoupledProductView extends VerticalLayout implements BeforeEnterObs
         secondarySplitLayout.setOrientation(SplitLayout.Orientation.VERTICAL);
         secondarySplitLayout.setSplitterPosition(30);
         selectProductSubView.setSplitPosition(35.0);
-        secondarySplitLayout.addSplitterDragendListener(event -> {
-            selectProductSubView.setSplitPosition(secondarySplitLayout.getSplitterPosition());
-        });
+
+        secondarySplitLayout.getElement()
+                .addEventListener("splitter-dragend", event -> {
+                    selectProductSubView.setSplitPosition(
+                            secondarySplitLayout.getSplitterPosition()
+                    );
+                });
     }
 
     public void setSelectedProductForCoupledProducts(Product selectedProduct) {

@@ -558,7 +558,7 @@ public class CopyView extends Div {
                 return "-";
             }
         }).setHeader("Marge I").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
-        marginIndustryColumnFrom.setClassNameGenerator(item -> "industry-column");
+        marginIndustryColumnFrom.setPartNameGenerator(item -> "industry-column");
 
         sellIndustryComumnFrom = fromGrid.addColumn(item -> {
             if(item.getSellPriceIndustry() != null){
@@ -707,7 +707,7 @@ public class CopyView extends Div {
                 return "-";
             }
         }).setHeader("Marge I").setResizable(true).setWidth("120px").setFlexGrow(0).setTextAlign(ColumnTextAlign.END);
-        marginIndustryColumnTo.setClassNameGenerator(item -> "industry-column");
+        marginIndustryColumnTo.setPartNameGenerator(item -> "industry-column");
 
         sellIndustryComumnTo = toGrid.addColumn(item -> {
             if(item.getSellPriceIndustry() != null){

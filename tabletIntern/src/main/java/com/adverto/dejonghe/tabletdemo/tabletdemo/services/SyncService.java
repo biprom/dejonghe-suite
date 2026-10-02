@@ -14,6 +14,7 @@ import com.mongodb.client.gridfs.GridFSFindIterable;
 import com.mongodb.client.gridfs.model.GridFSFile;
 import com.mongodb.client.gridfs.model.GridFSUploadOptions;
 import lombok.RequiredArgsConstructor;
+import lombok.Value;
 import org.bson.BsonObjectId;
 import org.bson.Document;
 import org.bson.types.ObjectId;
@@ -37,6 +38,8 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 public class SyncService {
+
+    public static final String TABLET_VERSION = "1.4.7";
 
     private final ProductLevel1Service productLevel1Service;
     private final ProductLevel2Service productLevel2Service;

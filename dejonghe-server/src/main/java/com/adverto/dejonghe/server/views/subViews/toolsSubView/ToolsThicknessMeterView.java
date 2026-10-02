@@ -1,10 +1,10 @@
 package com.adverto.dejonghe.server.views.subViews.toolsSubView;
 
-import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.adverto.dejonghe.common.dbservices.ProductService;
 import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.enums.workorder.Tools;
 import com.adverto.dejonghe.common.entities.product.product.Product;
+import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.dialog.Dialog;
@@ -62,6 +62,20 @@ public class ToolsThicknessMeterView extends VerticalLayout {
         HorizontalLayout horizontalLayout = new HorizontalLayout();
         horizontalLayout.setSpacing(true);
         tfThickness = new TextField();
+        tfThickness.addValueChangeListener(event -> {
+            String value = event.getValue();
+
+            if (value == null || value.isBlank()) {
+                depth = 0;
+                return;
+            }
+
+            try {
+                depth = Integer.parseInt(value.replace(",", "."));
+            } catch (NumberFormatException e) {
+                depth = 0;
+            }
+        });
         Button minusButton = new Button(VaadinIcon.MINUS.create());
         minusButton.addClickListener(buttonClickEvent ->{
             depth--;
@@ -83,6 +97,21 @@ public class ToolsThicknessMeterView extends VerticalLayout {
         HorizontalLayout horizontalLayout = new HorizontalLayout();
         horizontalLayout.setSpacing(true);
         tfRunningMeter = new TextField();
+        tfRunningMeter.addValueChangeListener(event -> {
+            String value = event.getValue();
+
+            if (value == null || value.isBlank()) {
+                meters = 0;
+                return;
+            }
+
+            try {
+                meters = Integer.parseInt(value.replace(",", "."));
+            } catch (NumberFormatException e) {
+                // Ongeldige invoer
+                meters = 0;
+            }
+        });
         Button minusButton = new Button(VaadinIcon.MINUS.create());
         minusButton.addClickListener(buttonClickEvent ->{
             meters--;

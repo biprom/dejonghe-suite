@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2000-2025 Vaadin Ltd.
+ * Copyright 2000-2026 Vaadin Ltd.
  *
  * This program is available under Vaadin Commercial License and Service Terms.
  *
@@ -156,12 +156,35 @@ export class VaadinSpreadsheet extends LitElement {
   }
 
   render() {
-    return html``;
+    return html`<slot name="overlays"></slot>`;
   }
 
   connectedCallback() {
     super.connectedCallback();
     spreadsheetResizeObserver.observe(this);
+    if (!this.api) {
+      this._overlays = document.createElement('div');
+      this._overlays.id = 'spreadsheet-overlays';
+      this._overlays.slot = 'overlays';
+      this.appendChild(this._overlays);
+
+      this.api = new Spreadsheet(this, this.renderRoot, this._overlays);
+      this.api.setHeight('100%');
+      this.api.setWidth('100%');
+      this.createCallbacks();
+
+      this._firstUpdate = true;
+    }
+
+    // The overlay container lives in light DOM, so the overlay styles are
+    // injected into `document.head` (see constructor). That does not reach the
+    // container when `<vaadin-spreadsheet>` is nested inside another element's
+    // shadow root. In that case, also adopt the overlay styles onto the
+    // container's root so the scoped rules apply there too.
+    const root = this._overlays.getRootNode();
+    if (root instanceof ShadowRoot && !root.adoptedStyleSheets.includes(spreadsheetOverlayStyles.styleSheet)) {
+      root.adoptedStyleSheets.push(spreadsheetOverlayStyles.styleSheet);
+    }
   }
 
   disconnectedCallback() {
@@ -171,23 +194,7 @@ export class VaadinSpreadsheet extends LitElement {
 
   updated(_changedProperties) {
     super.updated(_changedProperties);
-    let initial = false;
-    let overlays = document.getElementById('spreadsheet-overlays');
-    if (!this.api) {
-      if (!overlays) {
-        overlays = document.createElement('div');
-        overlays.id = 'spreadsheet-overlays';
-        document.body.appendChild(overlays);
-      }
-
-      this.api = new Spreadsheet(this, this.renderRoot);
-      this.api.setHeight('100%');
-      this.api.setWidth('100%');
-      this.createCallbacks();
-
-      initial = true;
-    }
-    overlays.setAttribute('theme', this.getAttribute('theme'));
+    this._overlays.setAttribute('theme', this.getAttribute('theme'));
     let propNames = [];
     let dirty = false;
     _changedProperties.forEach((oldValue, name) => {
@@ -309,74 +316,99 @@ export class VaadinSpreadsheet extends LitElement {
       }
       propNames.push(name);
     });
-    this.api.notifyStateChanges(propNames, initial);
-    if (initial) {
+    this.api.notifyStateChanges(propNames, this._firstUpdate);
+    if (this._firstUpdate) {
       this.api.relayout();
+      this._firstUpdate = false;
     }
+  }
+
+  // Flow can send RPC calls in the same task as the property writes that
+  // configure the api, before Lit's microtask-scheduled `updated()` runs to
+  // propagate those properties to the api. Calling `performUpdate()` flushes
+  // the pending update synchronously so the api state is ready.
+  _flush() {
+    this.performUpdate();
   }
 
   /* CLIENT SIDE RPC METHODS */
   updateBottomRightCellValues(cellData) {
+    this._flush();
     this.api.updateBottomRightCellValues(cellData);
   }
 
   updateTopLeftCellValues(cellData) {
+    this._flush();
     this.api.updateTopLeftCellValues(cellData);
   }
 
   updateTopRightCellValues(cellData) {
+    this._flush();
     this.api.updateTopRightCellValues(cellData);
   }
 
   updateBottomLeftCellValues(cellData) {
+    this._flush();
     this.api.updateBottomLeftCellValues(cellData);
   }
 
   updateFormulaBar(possibleName, col, row) {
+    this._flush();
     this.api.updateFormulaBar(possibleName, col, row);
   }
 
   invalidCellAddress() {
+    this._flush();
     this.api.invalidCellAddress();
   }
 
   showSelectedCell(name, col, row, cellValue, formula, locked, initialSelection) {
+    this._flush();
     this.api.showSelectedCell(name, col, row, cellValue, formula, locked, initialSelection);
   }
 
   showActions(actionDetails) {
+    this._flush();
     this.api.showActions(actionDetails);
   }
 
   setSelectedCellAndRange(name, col, row, c1, c2, r1, r2, scroll) {
+    this._flush();
     this.api.setSelectedCellAndRange(name, col, row, c1, c2, r1, r2, scroll);
   }
 
   cellsUpdated(updatedCellData) {
-    if (this.api) this.api.cellsUpdated(updatedCellData);
+    this._flush();
+    this.api.cellsUpdated(updatedCellData);
   }
 
   refreshCellStyles() {
-    if (this.api) this.api.refreshCellStyles();
+    this._flush();
+    this.api.refreshCellStyles();
   }
 
   editCellComment(col, row) {
+    this._flush();
     this.api.editCellComment(col, row);
   }
 
   onPopupButtonOpen(row, column, contentId, appId) {
+    this._flush();
     this.api.onPopupButtonOpened(row, column, contentId, appId);
   }
 
   closePopup(row, column) {
+    this._flush();
     this.api.closePopup(row, column);
   }
 
   addPopupButton(rawState) {
+    this._flush();
     this.api.addPopupButton(rawState);
   }
 
   removePopupButton(rawState) {
+    this._flush();
     this.api.removePopupButton(rawState);
   }
 
@@ -384,6 +416,10 @@ export class VaadinSpreadsheet extends LitElement {
   createCallbacks() {
     this.api.setGroupingCollapsedCallback((e) => {
       this.dispatchEvent(this.createEvent('groupingCollapsed', e));
+    });
+
+    this.api.setContextMenuClosedCallback((e) => {
+      this.dispatchEvent(this.createEvent('contextMenuClosed', e));
     });
 
     this.api.setLevelHeaderClickedCallback((e) => {

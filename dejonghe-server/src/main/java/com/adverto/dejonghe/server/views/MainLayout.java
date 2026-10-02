@@ -30,6 +30,8 @@ import com.vaadin.flow.component.orderedlayout.Scroller;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.sidenav.SideNav;
 import com.vaadin.flow.component.sidenav.SideNavItem;
+import com.vaadin.flow.router.AfterNavigationEvent;
+import com.vaadin.flow.router.AfterNavigationObserver;
 import com.vaadin.flow.router.Layout;
 import com.vaadin.flow.server.auth.AnonymousAllowed;
 import com.vaadin.flow.server.menu.MenuConfiguration;
@@ -48,7 +50,7 @@ import java.util.Map;
 @Slf4j
 @Layout
 @AnonymousAllowed
-public class MainLayout extends AppLayout {
+public class MainLayout extends AppLayout implements AfterNavigationObserver {
 
     private H1 viewTitle;
 
@@ -63,11 +65,6 @@ public class MainLayout extends AppLayout {
 
     public MainLayout() {
         UI.getCurrent().setLocale(new Locale("nl", "BE"));
-        System.out.println("Default locale: " + Locale.getDefault());
-        System.out.println("Language: " + Locale.getDefault().getLanguage());
-        System.out.println("Country: " + Locale.getDefault().getCountry());
-        System.out.println("Decimal separator: " +
-                DecimalFormatSymbols.getInstance().getDecimalSeparator());
         setUpNavBar();
         setPrimarySection(Section.DRAWER);
         addHeaderContent();
@@ -109,7 +106,7 @@ public class MainLayout extends AppLayout {
         Image logo = new Image("icons/img.png", "Logo");
         logo.setHeight("100px");
         logo.addClickListener(event -> {
-            UI.getCurrent().navigate(ImportArticleView.class);
+            //UI.getCurrent().navigate(ImportArticleView.class);
         });
 
 
@@ -283,13 +280,12 @@ public class MainLayout extends AppLayout {
         return layout;
     }
 
-    @Override
-    protected void afterNavigation() {
-        super.afterNavigation();
-        viewTitle.setText(getCurrentPageTitle());
-    }
-
     private String getCurrentPageTitle() {
         return MenuConfiguration.getPageHeader(getContent()).orElse("");
+    }
+
+    @Override
+    public void afterNavigation(AfterNavigationEvent event) {
+        viewTitle.setText(getCurrentPageTitle());
     }
 }

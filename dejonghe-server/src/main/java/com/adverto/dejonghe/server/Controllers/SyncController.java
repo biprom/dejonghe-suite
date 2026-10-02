@@ -7,6 +7,9 @@ import com.adverto.dejonghe.common.entities.employee.Employee;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkOrderStatus;
 import com.adverto.dejonghe.common.entities.product.product.*;
 import com.adverto.dejonghe.common.entities.restEntities.MediaUploadResponse;
+import com.adverto.dejonghe.common.entities.updateVersion.ApplicationSettings;
+import com.adverto.dejonghe.common.entities.updateVersion.UpdateStatus;
+import com.adverto.dejonghe.common.repos.ApplicationSettingsRepository;
 import com.mongodb.client.gridfs.GridFSBucket;
 import com.mongodb.client.gridfs.model.GridFSFile;
 import com.mongodb.client.gridfs.model.GridFSUploadOptions;
@@ -15,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.bson.BsonObjectId;
 import org.bson.Document;
 import org.bson.types.ObjectId;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -56,6 +60,11 @@ public class SyncController {
 
     @Value("${app.update.folder.remote}")
     private String updateFolderRemote;
+
+    @Autowired
+    ApplicationSettingsRepository settingsRepository;
+
+
 
     @GetMapping("/employees")
     public List<Employee> getEmployeesChangedSince(
@@ -325,5 +334,44 @@ public class SyncController {
         else{
             return Collections.emptyList();
         }
+    }
+
+    @GetMapping("/update/check")
+    public UpdateStatus checkUpdate(
+            @RequestParam String version
+    ) {
+
+        UpdateStatus status = new UpdateStatus();
+
+        ApplicationSettings settings =
+                settingsRepository.findById("GENERAL")
+                        .orElse(null);
+
+        if (settings == null
+                || settings.getLatestExternalTabletVersion() == null) {
+
+            status.setCurrentVersion(version);
+            status.setLatestVersion(null);
+
+            // Controle mislukt -> tablet mag dit niet als "groen" beschouwen
+            status.setUpdateAvailable(true);
+
+            return status;
+        }
+
+        String latestVersion =
+                settings.getLatestExternalTabletVersion().trim();
+
+        String currentVersion =
+                version != null ? version.trim() : "";
+
+        status.setCurrentVersion(currentVersion);
+        status.setLatestVersion(latestVersion);
+
+        status.setUpdateAvailable(
+                !latestVersion.equals(currentVersion)
+        );
+
+        return status;
     }
 }

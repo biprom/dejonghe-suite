@@ -298,6 +298,8 @@ public class InvoiceServices {
         List<Product> allProducts = new ArrayList<>();
 
         //get comment of first WorkOrder and add it as comment
+        Set<String> addedComments = new HashSet<>();
+
         workOrderSet.forEach(workOrder -> {
             try {
 
@@ -311,17 +313,22 @@ public class InvoiceServices {
 
                 if (comment != null && !comment.isBlank()) {
 
-                    List<String> commentRowList = splitText(comment, 90);
+                    // Alleen toevoegen als exact deze commentaar nog niet verwerkt is
+                    if (addedComments.add(comment)) {
 
-                    for (String row : commentRowList) {
-                        Product newProduct = new Product();
-                        newProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                        newProduct.setInternalName(row);
-                        newProduct.setTeamNumber(0);
-                        newProduct.setBComment(true);
-                        allProducts.add(newProduct);
+                        List<String> commentRowList = splitText(comment, 90);
+                        Collections.reverse(commentRowList);
+                        for (String row : commentRowList) {
+                            Product newProduct = new Product();
+                            newProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
+                            newProduct.setInternalName(row);
+                            newProduct.setTeamNumber(0);
+                            newProduct.setBComment(true);
+                            allProducts.add(newProduct);
+                        }
                     }
                 }
+
             } catch (Exception e) {
                 Notification.show("De starter bevat geen commentaar voor op de proforma!");
             }
@@ -1317,7 +1324,7 @@ public class InvoiceServices {
                 if (amountKmTrailer > 0.0) {
 
                     Product forfaitTrailer = productService.getWorkHoursTrailerForfait().get();
-                    forfaitTrailer.setSelectedAmount(amountKmTrailer);
+                    forfaitTrailer.setSelectedAmount(1.0);
                     forfaitTrailer.setTotalPrice(forfaitTrailer.getSellPrice());
                     forfaitTrailer.setTeamNumber(0);
                     forfaitTrailer.setBTravel(true);
@@ -1505,6 +1512,21 @@ public class InvoiceServices {
             emptyProduct1.setDate(workOrder.getWorkDateTime().toLocalDate());
             allProducts.add(emptyProduct1);
 
+            //add date to show on invoice on the first item of a new date
+            allProducts.stream()
+                    .collect(Collectors.groupingBy(
+                            Product::getDate,
+                            LinkedHashMap::new,
+                            Collectors.toList()
+                    ))
+                    .forEach((date, products) -> {
+
+                        Product firstProduct = products.get(0);
+
+                        firstProduct.setDateToShowOnInvoice(firstProduct.getDate().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")).toString());
+
+                    });
+
             invoice.setProductList(allProducts);
 
             checkIfToolsHoursAreSubtractedFromWorkOrder(invoice);
@@ -1612,7 +1634,9 @@ public class InvoiceServices {
             }
         }
 
-        List<Product>totalProductList = new ArrayList<>(invoice.getProductList());
+        List<Product> totalProductList = invoice.getProductList().stream()
+                .filter(x -> !Boolean.TRUE.equals(x.getMergedInvisibleProduct()))
+                .collect(Collectors.toList());
 
         List<Product> attachments = totalProductList.stream()
                 .filter(product -> {
@@ -1799,7 +1823,10 @@ public class InvoiceServices {
         linkList.add(exportName);
         pdfController.setPdfNaam(""+ formatted+".pdf");
 
-        UI.getCurrent().getPage().open("/pdf", "_blank");
+        UI.getCurrent().getPage().open(
+                "/pdf/invoice/" + invoice.getId(),
+                "_blank"
+        );
 
         // now generate the attachement
         if(attachments.size() > 0){
@@ -2320,6 +2347,7 @@ public class InvoiceServices {
         CustomerDTO customerDTO = new CustomerDTO();
         customerDTO.setCustomerName(item.getCustomer().getName());
         customerDTO.setVatNumber(item.getCustomer().getVatNumber());
+        customerDTO.setAddressDTOList(getAddressListForCustomer(item.getCustomer()));
         customerDTO.setPartyType("Customer");
 
         List<IdentifiersDTO>identifiersDTOList = new ArrayList<>();
@@ -2348,6 +2376,42 @@ public class InvoiceServices {
         invoiceDTO.setOrderLinesDTOList(orderLinesDTOList);
 
         return invoiceDTO;
+    }
+
+    private List<AddressDTO> getAddressListForCustomer(Customer customer) {
+
+        List<AddressDTO> addressDTOList = new ArrayList<>();
+
+        if (customer == null) {
+            return addressDTOList;
+        }
+
+        if (customer.getAddresses() == null || customer.getAddresses().isEmpty()) {
+            return addressDTOList;
+        }
+
+        Address invoiceAddress = customer.getAddresses().stream()
+                .filter(Objects::nonNull)
+                .filter(address -> Boolean.TRUE.equals(address.getInvoiceAddress()))
+                .findFirst()
+                .orElse(null);
+
+        if (invoiceAddress == null) {
+            return addressDTOList;
+        }
+
+        AddressDTO invoiceAddressDTO = new AddressDTO();
+
+        invoiceAddressDTO.setAddressType("InvoiceAddress");
+        invoiceAddressDTO.setName(customer.getName());
+        invoiceAddressDTO.setCity(invoiceAddress.getCity());
+        invoiceAddressDTO.setStreet(invoiceAddress.getStreet());
+        invoiceAddressDTO.setStreetNumber(invoiceAddress.getNumber());
+        invoiceAddressDTO.setZipCode(invoiceAddress.getZip());
+
+        addressDTOList.add(invoiceAddressDTO);
+
+        return addressDTOList;
     }
 
     public void checkZeroPositionsAndSaveThemToWorkAddress(Invoice selectedInvoice){

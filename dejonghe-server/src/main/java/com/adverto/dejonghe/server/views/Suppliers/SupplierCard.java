@@ -40,7 +40,7 @@ public class SupplierCard extends Card {
 
         Div title = new Div(supplier.getName());
         title.addClassName("card-title");
-        this.setTitle(title);
+        this.add(title);
 
         Div subtitle = new Div(new Text(supplier.getVatNumber()));
         subtitle.addClassName("card-subtitle");

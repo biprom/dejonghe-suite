@@ -266,7 +266,7 @@ public class CurrentQuoteSubView extends VerticalLayout {
                 return "gray";
             }
         });
-        quoteGrid.setClassNameGenerator(item -> item.getFinalizeQuote() ? "grid-row-grey" : "grid-row-grey");
+        quoteGrid.setPartNameGenerator(item -> item.getFinalizeQuote() ? "grid-row-grey" : "grid-row-grey");
         quoteGrid.addClassName("rounded-tree");
         quoteGrid.setSelectionMode(Grid.SelectionMode.MULTI);
         quoteGrid.addClassName("my-bold-footer");

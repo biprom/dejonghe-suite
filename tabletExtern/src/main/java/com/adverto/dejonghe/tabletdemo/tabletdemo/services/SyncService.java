@@ -6,6 +6,7 @@ import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.employee.Employee;
 import com.adverto.dejonghe.common.entities.product.product.*;
 import com.adverto.dejonghe.common.entities.restEntities.MediaUploadResponse;
+import com.adverto.dejonghe.common.entities.updateVersion.UpdateStatus;
 import com.adverto.dejonghe.common.repos.CustomerRepo;
 import com.adverto.dejonghe.common.repos.EmployeeRepo;
 import com.adverto.dejonghe.common.repos.ProductRepo;
@@ -17,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.bson.BsonObjectId;
 import org.bson.Document;
 import org.bson.types.ObjectId;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -36,7 +38,11 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
+
 public class SyncService {
+
+    @Value("${tablet.version}")
+    private String currentVersion;
 
     private final ProductLevel1Service productLevel1Service;
     private final ProductLevel2Service productLevel2Service;
@@ -463,5 +469,14 @@ public class SyncService {
             productLevel7Service.saveProductLevel7(productLevel7);
         }
     }
+
+     public UpdateStatus checkForUpdate(){
+         UpdateStatus updateStatus =
+                 restTemplate.getForObject(
+                         "http://192.168.1.90:8080/api/update/check?version=" + currentVersion,
+                         UpdateStatus.class
+                 );
+         return updateStatus;
+     }
 }
 

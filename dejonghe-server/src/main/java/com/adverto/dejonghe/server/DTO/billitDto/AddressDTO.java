@@ -21,6 +21,12 @@ public class AddressDTO {
     @JsonProperty("Street")
     String street;
 
+    @JsonProperty("StreetNumber")
+    String streetNumber;
+
     @JsonProperty("City")
     String city;
+
+    @JsonProperty("Zipcode")
+    String zipCode;
 }

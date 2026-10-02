@@ -191,10 +191,21 @@ public class QuoteServices {
         parameters.clear();
 
         try {
-            parameters.put("werfAdres", "Werfadres : " + "\n" +
-                    quote.getWorkAddress().getStreet() + "\n" +
-                    quote.getWorkAddress().getZip() + " " +
-                    quote.getWorkAddress().getCity());
+            Address address = quote.getWorkAddress();
+
+            if (address != null
+                    && address.getStreet() != null
+                    && address.getZip() != null
+                    && address.getCity() != null) {
+
+                parameters.put("werfAdres",
+                        "Werfadres :\n"
+                                + address.getStreet() + "\n"
+                                + address.getZip() + " "
+                                + address.getCity());
+            } else {
+                parameters.put("werfAdres", "");
+            }
         }
         catch (Exception e){
             Notification.show("Gelieve voor een volledige servicelocatie te zorgen aub");
@@ -202,10 +213,20 @@ public class QuoteServices {
 
         try {
             Address invoiceAddress = quote.getCustomer().getAddresses().stream().filter(x -> (x.getInvoiceAddress() != null) && (x.getInvoiceAddress() == true)).findFirst().get();
-            parameters.put("facturatieAdres", quote.getCustomer().getName() + "\n" +
-                    invoiceAddress.getStreet() + "\n" +
-                    invoiceAddress.getZip() + " " +
-                    invoiceAddress.getCity());
+            String facturatieAdres = quote.getCustomer().getName();
+
+            if (invoiceAddress != null
+                    && invoiceAddress.getStreet() != null
+                    && invoiceAddress.getZip() != null
+                    && invoiceAddress.getCity() != null) {
+
+                facturatieAdres += "\n"
+                        + invoiceAddress.getStreet() + "\n"
+                        + invoiceAddress.getZip() + " "
+                        + invoiceAddress.getCity();
+            }
+
+            parameters.put("facturatieAdres", facturatieAdres);
         }
         catch (Exception e){
             //get first Address in list
@@ -262,7 +283,9 @@ public class QuoteServices {
             }
         }
 
-        List<Product>totalProductList = new ArrayList<>(quote.getProductList());
+        List<Product> totalProductList = quote.getProductList().stream()
+                .filter(x -> !Boolean.TRUE.equals(x.getMergedInvisibleProduct()))
+                .collect(Collectors.toList());
 
         List<Product> attachments = totalProductList.stream()
                 .filter(product -> {
@@ -351,7 +374,7 @@ public class QuoteServices {
 
         parameters.put("netto", totalPriceInvoice);
 
-        if(quote.getCustomer().getVatNumber().contains("BE")) {
+        if((quote.getCustomer().getVatNumber() != null) && (quote.getCustomer().getVatNumber().contains("BE"))) {
             parameters.put("btwBedrag", quote.getProductList().stream()
                     .filter(product -> product.getTotalPrice() != null)
                     .mapToDouble(x -> (x.getTotalPrice() * x.getVat().getValue()) / 100)
@@ -391,7 +414,10 @@ public class QuoteServices {
         //now show it in a new tab in the browser
         pdfController.setPdfNaam(""+ formatted+".pdf");
 
-        UI.getCurrent().getPage().open("/pdf", "_blank");
+        UI.getCurrent().getPage().open(
+                "/pdf/invoice/" + quote.getId(),
+                "_blank"
+        );
 
         // now generate the attachement
         if(attachments.size() > 0){

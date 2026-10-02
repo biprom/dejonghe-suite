@@ -1,33 +1,49 @@
 @import url('./main-layout.css');
 
+/* =========================================================
+   THEME VARIABLES
+   ========================================================= */
+
 :root {
     --lumo-primary-color: #4e4a47;
+    --lumo-font-size-m: 20px;
 }
 
 [theme~="dark"] {
     --lumo-base-color: #4e4a47;
 }
 
-html {
-    --lumo-font-size-m: 20px; /* default medium font size */
-}
+
+/* =========================================================
+   BUTTONS
+   ========================================================= */
 
 vaadin-button.special {
     --lumo-primary-text-color: cyan;
 }
 
-vaadin-button{
-    --vaadin-button-background : lightgrey;
+vaadin-button {
+    --vaadin-button-background: lightgrey;
 }
 
-vaadin-vertical-layout.blueborder{
+
+/* =========================================================
+   LAYOUTS
+   ========================================================= */
+
+vaadin-vertical-layout.blueborder {
     border: 1px solid blue;
 }
 
-vaadin-horizontal-layout.selected{
+vaadin-horizontal-layout.selected {
     border: 1px solid blue;
     background: lightblue;
 }
+
+
+/* =========================================================
+   GRID - PARTS / ROWS / CELLS
+   ========================================================= */
 
 vaadin-grid::part(remark) {
     background-color: yellow;
@@ -37,42 +53,98 @@ vaadin-grid::part(attachement) {
     background-color: lightblue;
 }
 
-vaadin-grid::part(row).bold-row {
+vaadin-grid::part(bold-row) {
     font-weight: bold;
     background-color: lightblue;
 }
+
+vaadin-grid::part(gray) {
+    color: #9e9e9e;
+    background-color: #f0f0f0;
+}
+
+vaadin-grid::part(row) {
+    border-bottom: 1px solid var(--lumo-contrast-10pct);
+}
+
+vaadin-grid::part(cell) {
+    font-size: 20px;
+    white-space: normal;
+    line-height: 1.4;
+    height: 60px;
+}
+
+vaadin-grid.no-large-cells::part(cell) {
+    font-size: 20px;
+    height: auto;
+    white-space: normal;
+    padding: 0.3rem;
+}
+
+
+/* =========================================================
+   GRID FOOTERS
+   ========================================================= */
+
+.my-bold-footer::part(footer-cell) {
+    font-weight: bold;
+    border-top: 1px solid black;
+    border-bottom: 1px solid black;
+}
+
+.my-grid-no-footer::part(footer-cell) {
+    display: none;
+}
+
+
+/* =========================================================
+   APP LAYOUT
+   ========================================================= */
 
 vaadin-app-layout::part(navbar) {
     background-color: #ffffff;
     min-height: 80px;
 }
 
-/*vaadin-app-layout::part(navbar) {*/
-/*    background-color: white; !* Lichte achtergrond voor de content *!*/
-/*}*/
+
+/* =========================================================
+   SPLIT LAYOUT
+   ========================================================= */
 
 vaadin-split-layout::part(splitter) {
     background-color: #223348;
 }
 
-vaadin-split-layout::part(handle){
+vaadin-split-layout::part(handle) {
     width: 10px;
 }
 
+
+/* =========================================================
+   COMBO BOX
+   ========================================================= */
 
 vaadin-combo-box::part(input-field) {
     font-weight: bold;
 }
 
-/* Wanneer de combobox GEEN placeholder toont (dus waarde ingevuld) */
 vaadin-combo-box.highlight-border[has-value]::part(input-field) {
     border: 2px solid green;
 }
 
-/* Wanneer de combobox LEEG is (placeholder zichtbaar) */
-vaadin-combo-box:not([has-value])::part(input-field) {
-    /*border: 2px dashed grey;*/ /* voorbeeld */
+
+/* =========================================================
+   TEXT FIELD
+   ========================================================= */
+
+vaadin-text-field::part(input-field) {
+    font-size: 18px;
 }
+
+
+/* =========================================================
+   CHECKBOXES
+   ========================================================= */
 
 .attached[checked]::part(checkbox) {
     background-color: black;
@@ -84,6 +156,11 @@ vaadin-combo-box:not([has-value])::part(input-field) {
     --lumo-primary-contrast-color: black;
 }
 
+
+/* =========================================================
+   MENU BAR
+   ========================================================= */
+
 vaadin-menu-bar-button.menu-as-button {
     background: #ffca1b;
     color: black;
@@ -93,30 +170,8 @@ vaadin-menu-bar-button.menu-as-button {
 
 vaadin-menu-bar-button.menu-as-button:hover {
     outline: 2px solid black;
-    outline-offset: 0px;
+    outline-offset: 0;
 }
-
-/*vaadin-menu-bar-button.menu-as-action {*/
-/*    background-color: var(--lumo-success-color);*/
-/*    color: var(--lumo-success-contrast-color);*/
-/*    border-radius: var(--lumo-border-radius-m);*/
-/*    padding: 0.45em 1.1em;*/
-/*    font-weight: 600;*/
-
-/*    box-shadow: var(--lumo-box-shadow-xs);*/
-/*    transition:*/
-/*            background-color 150ms ease,*/
-/*            box-shadow 150ms ease,*/
-/*            transform 120ms ease;*/
-/*}*/
-
-/*vaadin-menu-bar-button.menu-as-action:hover {*/
-/*    background-color: var(--lumo-success-color-50pct);*/
-/*    box-shadow:*/
-/*            0 0 0 1px var(--lumo-success-color-50pct),*/
-/*            0 6px 14px rgba(0, 0, 0, 0.18);*/
-/*    transform: translateY(-1.5px) scale(1.02);*/
-/*}*/
 
 .large-menubar vaadin-menu-bar-button {
     width: 150px;
@@ -125,68 +180,53 @@ vaadin-menu-bar-button.menu-as-button:hover {
     border-radius: 20px;
 }
 
-/* Styling for main menu */
 
-/*.sidenav-button {*/
-/*    font-size: 15px;          !* grotere tekst *!*/
-/*    height: 100px;*/
-/*    color: white;*/
-/*}*/
+/* =========================================================
+   SUB NAVIGATION
+   ========================================================= */
 
-.subNav-new{
+.subNav-new {
     background-color: #ffca1b;
     color: black;
     font-weight: 600;
 
-    /* Grootte van de knop */
-    font-size: 15px;        /* lettertype groter */
-    padding: 12px 24px;     /* verticale + horizontale padding */
+    font-size: 15px;
+    padding: 12px 24px;
+
     width: 80px;
     height: 80px;
 
-    /* Optioneel: ronde hoeken en pointer cursor */
     border-radius: 20px;
     cursor: pointer;
 }
 
-.subNav-selected{
+.subNav-selected {
     outline: 2px solid black;
     outline-offset: 2px;
-    /*background-color: var(--lumo-primary-color);*/
-    /*color: black;*/
-    /*font-weight: 600;*/
 }
 
-.subNav-button{
+.subNav-button {
     background-color: lightgray;
     color: black;
     font-weight: 600;
 
-    /* Grootte van de knop */
-    font-size: 18px;        /* lettertype groter */
-    padding: 12px 24px;     /* verticale + horizontale padding */
-    min-width: 120px;       /* minimale breedte, optioneel */
-    height: 40px;           /* hoogte wordt bepaald door padding */
+    font-size: 18px;
+    padding: 12px 24px;
 
-    /* Optioneel: ronde hoeken en pointer cursor */
+    min-width: 120px;
+    height: 40px;
+
     border-radius: 6px;
     cursor: pointer;
 }
 
-/*.large-icon-item {*/
-/*    display: flex;*/
-/*    flex-direction: column; !* icon boven tekst *!*/
-/*    align-items: center;    !* center horizontaal *!*/
-/*    justify-content: center;*/
-/*    padding: 16px;*/
-/*}*/
+
+/* =========================================================
+   VIEW / CARDS
+   ========================================================= */
 
 .view-wrapper {
-    /*padding: 20px;                     !* ruimte rondom content *!*/
-    /*border: 50px solid #f1f2fb;         !* randkleur *!*/
-    /*border-radius: 10px;                !* afgeronde hoeken *!*/
-    background-color: #f9f9f9;         /* achtergrondkleur */
-    /*box-shadow: 0 2px 8px rgba(0,0,0,0.15); !* subtiel schaduw-effect *!*/
+    background-color: #f9f9f9;
 }
 
 .card-title {
@@ -201,27 +241,33 @@ vaadin-menu-bar-button.menu-as-button:hover {
 
 .card-address {
     font-size: 1.2rem;
-    /*font-weight: bold;*/
+}
+
+.card {
+    display: flex;
+    gap: 1rem;
+    padding: 0.75rem;
+    align-items: center;
 }
 
 
-/*vaadin-tab.button-tab {*/
-/*    background-color: var(--lumo-primary-color);*/
-/*    color: var(--lumo-primary-contrast-color);*/
-/*    border-radius: var(--lumo-border-radius-l);*/
-/*    padding: 0.5em 1.25em;*/
-/*    font-weight: 600;*/
-/*}*/
+/* =========================================================
+   SIDE NAV
+   ========================================================= */
 
-/*!* hover *!*/
-/*vaadin-tab.button-tab:hover {*/
-/*    background-color: var(--lumo-primary-color-50pct);*/
-/*}*/
+vaadin-side-nav-item[current]::part(content) {
+    background: transparent !important;
+    color: #ffca1b;
+}
 
-/*!* geselecteerde tab *!*/
-/*vaadin-tab[selected].button-tab {*/
-/*    background-color: var(--lumo-primary-color-50pct);*/
-/*}*/
+vaadin-side-nav-item:hover vaadin-icon {
+    color: #ffca1b;
+}
+
+
+/* =========================================================
+   TREE / TOGGLE / VIRTUAL LIST
+   ========================================================= */
 
 .large-toggle {
     transform: scale(2);
@@ -230,52 +276,9 @@ vaadin-menu-bar-button.menu-as-button:hover {
 }
 
 .rounded-tree {
-    border-radius: 16px;          /* afgeronde hoeken */
-    overflow: hidden;             /* content blijft binnen de radius */
-    border: 1px solid #ccc;       /* optioneel, om de afronding zichtbaar te maken */
-}
-
-vaadin-grid::part(row) {
-    border-bottom: 1px solid var(--lumo-contrast-10pct);
-}
-
-vaadin-grid::part(cell) {
-    font-size: 20px; /* gewenste tekstgrootte */
-    white-space: normal;
-    line-height: 1.4;
-    height: 60px;
-}
-
-vaadin-grid.no-large-cells::part(cell) {
-    font-size: 20px;
-    height: auto;
-    white-space: normal;
-    padding: 0.3rem 0.3rem;
-}
-
-vaadin-side-nav-item[current]::part(content) {
-    background: transparent !important;
-}
-
-vaadin-side-nav-item[current]::part(content) {
-    color: #ffca1b;
-}
-
-/* Icoon */
-vaadin-side-nav-item:hover vaadin-icon {
-    color: #ffca1b;
-}
-
-/* Icoon */
-vaadin-side-nav-item:hover vaadin-icon {
-    color: #ffca1b;
-}
-
-.card {
-    display: flex;
-    gap: 1rem;
-    padding: 0.75rem;
-    align-items: center;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid #ccc;
 }
 
 .info {
@@ -292,37 +295,3 @@ vaadin-side-nav-item:hover vaadin-icon {
     padding: var(--lumo-space-s);
     margin-bottom: var(--lumo-space-m);
 }
-
-.my-bold-footer::part(footer-cell) {
-    font-weight: bold;
-    border-top: 1px solid black;
-    border-bottom: 1px solid black;
-}
-
-.my-grid-no-footer::part(footer-cell) {
-    display: none;
-}
-
-vaadin-grid::part(gray) {
-    color: #9e9e9e;
-    background-color: #f0f0f0;
-}
-
-vaadin-text-field::part(input-field) {
-    font-size: 18px;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -427,6 +427,13 @@ public class InvoiceServices {
                             }
                         }
                     }
+                    if((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE) && (workOrderHeader.getWorkType()) == WorkType.PICKUP)){
+                        for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
+                            if(workOrderTime.getTimeStart() != null && workOrderTime.getTimeStop() != null){
+                                programHoursLocal = programHoursLocal + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze())/60.0);
+                            }
+                        }
+                    }
                     i++;
                 }
             }
@@ -594,7 +601,7 @@ public class InvoiceServices {
                 regularKm.setBTravel(true);
                 regularKm.setTeamNumber(0);
                 if(amountRidesRegular > 1) {
-                    regularKm.setInternalName(regularKm.getInternalName() + "( "+ amountRidesRegular + " x heen en terug )");
+                    regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
                 }
                 allProducts.add(regularKm);
             }
@@ -612,7 +619,7 @@ public class InvoiceServices {
                 trailerKm.setBTravel(true);
                 trailerKm.setTeamNumber(0);
                 if(amountRidesRegular > 1) {
-                    trailerKm.setInternalName(trailerKm.getInternalName() + "( "+ amountRidesTrailer + " x heen en terug )");
+                    trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
                 }
                 allProducts.add(trailerKm);
             }
@@ -623,7 +630,7 @@ public class InvoiceServices {
                 craneKm.setBTravel(true);
                 craneKm.setTeamNumber(0);
                 if(amountRidesRegular > 1) {
-                    craneKm.setInternalName(craneKm.getInternalName() + "( "+ amountRidesCrane + " x heen en terug )");
+                    craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
                 }
                 allProducts.add(craneKm);
             }
@@ -676,7 +683,7 @@ public class InvoiceServices {
                 regularKm.setBTravel(true);
                 regularKm.setTeamNumber(0);
                 if(amountRidesRegular > 1) {
-                    regularKm.setInternalName(regularKm.getInternalName() + "( "+ amountRidesRegular + " x heen en terug )");
+                    regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
                 }
                 allProducts.add(regularKm);
             }
@@ -695,7 +702,7 @@ public class InvoiceServices {
                 trailerKm.setBTravel(true);
                 trailerKm.setTeamNumber(0);
                 if(amountRidesRegular > 1) {
-                    trailerKm.setInternalName(trailerKm.getInternalName() + "( "+ amountRidesTrailer + " x heen en terug )");
+                    trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
                 }
                 allProducts.add(trailerKm);
             }
@@ -706,7 +713,7 @@ public class InvoiceServices {
                 craneKm.setBTravel(true);
                 craneKm.setTeamNumber(0);
                 if(amountRidesRegular > 1) {
-                    craneKm.setInternalName(craneKm.getInternalName() + "( "+ amountRidesCrane + " x heen en terug )");
+                    craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
                 }
                 allProducts.add(craneKm);
             }
@@ -891,7 +898,6 @@ public class InvoiceServices {
         invoice.setWorkAddress(workAddress);
         Optional<List<Customer>> optCustomer = customerService.getCustomerByWorkAddress(workAddress);
         if(optCustomer.isEmpty()){
-            // if there is no customer -> make Notification
             noCustomerDialog.open();
             return null;
         }
@@ -901,7 +907,6 @@ public class InvoiceServices {
             }
             invoice.setCustomer(optCustomer.get().get(0));
         }
-
 
         if (optCustomer.get().size() >= 2) {
             Notification.show("Er zijn meerdere klanten met hetzelfde Werkadres");
@@ -1048,6 +1053,13 @@ public class InvoiceServices {
                         for (WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()) {
                             if((workOrderTime.getTimeStart() != null) && (workOrderTime.getTimeStop() != null)){
                                 programHoursLocal = programHoursLocal + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze()) / 60.0);
+                            }
+                        }
+                    }
+                    if((workOrder.getWorkLocation().equals(WorkLocation.WORKPLACE) && (workOrderHeader.getWorkType()) == WorkType.PICKUP)){
+                        for(WorkOrderTime workOrderTime : workOrderHeader.getWorkOrderTimeList()){
+                            if(workOrderTime.getTimeStart() != null && workOrderTime.getTimeStop() != null){
+                                programHoursLocal = programHoursLocal + numberOfTechnicians * (((Duration.between(workOrderTime.getTimeStart(), workOrderTime.getTimeStop()).toMinutes())-workOrderTime.getPauze())/60.0);
                             }
                         }
                     }
@@ -1227,7 +1239,7 @@ public class InvoiceServices {
                     regularKm.setBTravel(true);
                     regularKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesRegular > 1) {
-                        regularKm.setInternalName(regularKm.getInternalName() + "( "+ amountRidesRegular + " x heen en terug )");
+                        regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
                     }
                     allProducts.add(regularKm);
                 }
@@ -1247,7 +1259,7 @@ public class InvoiceServices {
                     trailerKm.setBTravel(true);
                     trailerKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesTrailer > 1) {
-                        trailerKm.setInternalName(trailerKm.getInternalName() + "( "+ amountRidesTrailer + " x heen en terug )");
+                        trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
                     }
                     allProducts.add(trailerKm);
                 }
@@ -1259,7 +1271,7 @@ public class InvoiceServices {
                     craneKm.setBTravel(true);
                     craneKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesCrane > 1) {
-                        craneKm.setInternalName(craneKm.getInternalName() + "( "+ amountRidesCrane + " x heen en terug )");
+                        craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
                     }
                     allProducts.add(craneKm);
                 }
@@ -1317,7 +1329,7 @@ public class InvoiceServices {
                     regularKm.setBTravel(true);
                     regularKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesRegular > 1) {
-                        regularKm.setInternalName(regularKm.getInternalName() + "( "+ amountRidesRegular + " x heen en terug )");
+                        regularKm.setInternalName(regularKm.getInternalName() + "("+ amountRidesRegular + " x heen en terug)");
                     }
                     allProducts.add(regularKm);
                 }
@@ -1339,7 +1351,7 @@ public class InvoiceServices {
                     trailerKm.setBTravel(true);
                     trailerKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesTrailer > 1) {
-                        trailerKm.setInternalName(trailerKm.getInternalName() + "( "+ amountRidesTrailer + " x heen en terug )");
+                        trailerKm.setInternalName(trailerKm.getInternalName() + "("+ amountRidesTrailer + " x heen en terug)");
                     }
                     allProducts.add(trailerKm);
                 }
@@ -1351,7 +1363,7 @@ public class InvoiceServices {
                     craneKm.setBTravel(true);
                     craneKm.setDate(workOrder.getWorkDateTime().toLocalDate());
                     if(amountRidesCrane > 1) {
-                        craneKm.setInternalName(craneKm.getInternalName() + "( "+ amountRidesCrane + " x heen en terug )");
+                        craneKm.setInternalName(craneKm.getInternalName() + "("+ amountRidesCrane + " x heen en terug)");
                     }
                     allProducts.add(craneKm);
                 }
@@ -1699,10 +1711,6 @@ public class InvoiceServices {
                             .filter(i -> (products.get(i).getBComment()) && (products.get(i).getDateToShowOnInvoice() != null) && (products.get(i).getDateToShowOnInvoice().matches(uniqueDate.format(COMPAREDFORMATTER))))
                             .reduce((first, second) -> second);
 
-                products.stream().forEach(product -> {
-                    System.out.println(product.getDateToShowOnInvoice() + "=" +uniqueDate.format(COMPAREDFORMATTER));
-                });
-
 
                 if (indexWorkHoursOpt.isPresent()) {
                     int index = indexWorkHoursOpt.getAsInt();
@@ -1927,6 +1935,7 @@ public class InvoiceServices {
             Notification.show("Gelieve een bijlagenaam in te geven aub");
         }
 
+        Collections.reverse(attachments);
         for(Product product : attachments){
             double roundedTotalPrice = BigDecimal
                     .valueOf(product.getTotalPrice())
@@ -2414,42 +2423,165 @@ public class InvoiceServices {
         return addressDTOList;
     }
 
-    public void checkZeroPositionsAndSaveThemToWorkAddress(Invoice selectedInvoice){
-        if(selectedInvoice.getProductList()!= null && selectedInvoice.getProductList().size() > 0){
-            selectedInvoice.getProductList().stream().filter(x -> (x.getPositionNumber() != null) && (x.getPositionNumber().matches("0"))).collect(Collectors.toList()).forEach(x -> {
-                Optional<List<Customer>> customerByWorkAddress = customerService.getCustomerByWorkAddress(selectedInvoice.getWorkAddress());
-                if(customerByWorkAddress.isPresent() && customerByWorkAddress.get().size() > 0){
-                    customerByWorkAddress.get().getFirst().getAddresses().stream().filter(address -> (address.getAddressName() != null) && (address.getAddressName().matches(selectedInvoice.getWorkAddress().getAddressName())) && (address.getInvoiceAddress() != null) && (address.getInvoiceAddress() == false)) .collect(Collectors.toList()).forEach(address -> {
-                        for(int i = 0 ; i < x.getSelectedAmount().intValue(); i++){
-                            Device device = new Device();
-                            device.setDeviceName(x.getInternalName());
-                            device.setCode(x.getProductCode());
-                            device.setInvoiceNumber(String.valueOf(selectedInvoice.getFinalInvoiceNumber()));
-                            device.setDate(selectedInvoice.getInvoiceDate());
-                            String level2 = x.getProductLevel2().getName();
-                            if(level2.matches("Separatietechnieken")){
-                                device.setType(x.getProductLevel3().getName());
-                            }
-                            else{
+    public void checkZeroPositionsAndSaveThemToWorkAddress(Invoice selectedInvoice) {
+
+        if (selectedInvoice == null) {
+            return;
+        }
+
+        Address invoiceWorkAddress = selectedInvoice.getProjectWorkAddress() != null
+                ? selectedInvoice.getProjectWorkAddress()
+                : selectedInvoice.getWorkAddress();
+
+        if (invoiceWorkAddress == null) {
+            Notification.show("Geen werfadres gevonden!");
+            return;
+        }
+
+        if (selectedInvoice.getProductList() == null
+                || selectedInvoice.getProductList().isEmpty()) {
+            return;
+        }
+
+        Optional<List<Customer>> customerByWorkAddress =
+                customerService.getCustomerByWorkAddress(invoiceWorkAddress);
+
+        if (customerByWorkAddress.isEmpty()
+                || customerByWorkAddress.get().isEmpty()) {
+
+            Notification.show("Geen klant gevonden met de naam van het werfadres!");
+            return;
+        }
+
+        Customer customer = customerByWorkAddress.get().getFirst();
+
+        if (customer.getAddresses() == null
+                || customer.getAddresses().isEmpty()) {
+            return;
+        }
+
+        List<Address> workAddresses = customer.getAddresses().stream()
+                .filter(Objects::nonNull)
+                .filter(address ->
+                        Boolean.FALSE.equals(address.getInvoiceAddress())
+                )
+                .toList();
+
+        if (workAddresses.isEmpty()) {
+            Notification.show("Geen werkadres gevonden bij de klant!");
+            return;
+        }
+
+        Address selectedWorkAddress;
+
+        if (workAddresses.size() == 1) {
+
+            /*
+             * Er is slechts één werkadres.
+             * Dit adres wordt automatisch gebruikt,
+             * ongeacht de naam van invoiceWorkAddress.
+             */
+            selectedWorkAddress = workAddresses.getFirst();
+
+        } else {
+
+            /*
+             * Er zijn meerdere werkadressen.
+             * Zoek dan het adres met dezelfde naam
+             * als het werfadres van de factuur.
+             */
+            selectedWorkAddress = workAddresses.stream()
+                    .filter(address ->
+                            Objects.equals(
+                                    address.getAddressName(),
+                                    invoiceWorkAddress.getAddressName()
+                            )
+                    )
+                    .findFirst()
+                    .orElse(null);
+
+            if (selectedWorkAddress == null) {
+                Notification.show(
+                        "Geen overeenkomend werkadres gevonden bij de klant!"
+                );
+                return;
+            }
+        }
+
+        selectedInvoice.getProductList().stream()
+                .filter(Objects::nonNull)
+                .filter(product ->
+                        "0".equals(product.getPositionNumber())
+                )
+                .forEach(product -> {
+
+                    if (product.getSelectedAmount() == null) {
+                        return;
+                    }
+
+                    for (int i = 0;
+                         i < product.getSelectedAmount().intValue();
+                         i++) {
+
+                        Device device = new Device();
+
+                        device.setDeviceName(
+                                product.getInternalName()
+                        );
+
+                        device.setCode(
+                                product.getProductCode()
+                        );
+
+                        if (selectedInvoice.getFinalInvoiceNumber() != null) {
+
+                            device.setInvoiceNumber(
+                                    String.valueOf(
+                                            selectedInvoice.getFinalInvoiceNumber()
+                                    )
+                            );
+                        }
+
+                        device.setDate(
+                                selectedInvoice.getInvoiceDate()
+                        );
+
+                        if (product.getProductLevel2() != null) {
+
+                            String level2 =
+                                    product.getProductLevel2().getName();
+
+                            if ("Separatietechnieken".equals(level2)) {
+
+                                if (product.getProductLevel3() != null) {
+
+                                    device.setType(
+                                            product.getProductLevel3().getName()
+                                    );
+                                }
+
+                            } else {
+
                                 device.setType(level2);
                             }
-                            String id = deviceService.save(device);
-
-                            if (address.getCoupledDeviceList() == null) {
-                                address.setCoupledDeviceList(new ArrayList<>());
-                            }
-
-                            address.getCoupledDeviceList().add(id);
-
-                            customerService.save(customerByWorkAddress.get().getFirst());
                         }
-                    });
-                }
-                else{
-                    Notification.show("Geen klant gevonden met de naam van het werfadres!");
-                }
-            });
-        }
+
+                        String id = deviceService.save(device);
+
+                        if (selectedWorkAddress.getCoupledDeviceList() == null) {
+
+                            selectedWorkAddress.setCoupledDeviceList(
+                                    new ArrayList<>()
+                            );
+                        }
+
+                        selectedWorkAddress
+                                .getCoupledDeviceList()
+                                .add(id);
+                    }
+                });
+
+        customerService.save(customer);
     }
 
     public void addReminder(Invoice invoice) {

@@ -27,6 +27,7 @@ import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.treegrid.TreeGrid;
 import com.vaadin.flow.data.provider.hierarchy.TreeData;
 import com.vaadin.flow.data.provider.hierarchy.TreeDataProvider;
+import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Scope;
@@ -160,10 +161,23 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
         pendingWorkOrdersGrid.addThemeVariants(GridVariant.LUMO_COLUMN_BORDERS);
         pendingWorkOrdersGrid.setSelectionMode(TreeGrid.SelectionMode.MULTI);
         Grid.Column<WorkOrder> columnAddress = pendingWorkOrdersGrid.addHierarchyColumn(workOrder -> workOrder.getWorkAddress().getAddressName()).setHeader("Naam").setFlexGrow(2);
-        Grid.Column<WorkOrder> dateColum = pendingWorkOrdersGrid.addColumn(workorder -> workorder.getWorkDateTime().toLocalDate().format(
-                        DateTimeFormatter.ofPattern("dd/MM/yyyy")
-                ))
-                .setHeader("Datum").setSortable(true).setFlexGrow(1);
+        Grid.Column<WorkOrder> dateColum = pendingWorkOrdersGrid
+                .addColumn(workorder -> workorder.getWorkDateTime()
+                        .toLocalDate()
+                        .format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))
+                .setHeader("Datum")
+                .setSortable(true)
+                .setComparator(
+                        Comparator.comparing(
+                                        (WorkOrder workorder) ->
+                                                workorder.getWorkDateTime().toLocalDate()
+                                )
+                                .thenComparing(
+                                        workorder ->
+                                                new ObjectId(workorder.getId()).getTimestamp()
+                                )
+                )
+                .setFlexGrow(1);
         Grid.Column<WorkOrder> columnSubject = pendingWorkOrdersGrid.addComponentColumn(workOrder -> {
             Span span = new Span(getWorkOrderDiscriptions(workOrder));
             span.getElement().setProperty("title", getWorkOrderDiscriptions(workOrder));

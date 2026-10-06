@@ -1,6 +1,7 @@
 package com.adverto.dejonghe.server.views.subViews;
 
 import com.adverto.dejonghe.common.dbservices.*;
+import com.adverto.dejonghe.common.entities.customers.Address;
 import com.adverto.dejonghe.common.entities.product.product.*;
 import com.adverto.dejonghe.common.wizard.ProductWizard;
 import com.adverto.dejonghe.common.wizard.ProductWizardService;
@@ -1618,11 +1619,34 @@ public class SelectProductSubView extends VerticalLayout {
         productToAdd.setSetList(item.getSetList());
         productToAdd.setPdfList(item.getPdfList());
         productToAdd.setLinkDocumentList(item.getLinkDocumentList());
+
         productToAdd.setPurchasePrice(item.getPurchasePrice());
-        productToAdd.setSellPrice(item.getSellPrice());
         productToAdd.setSellMargin(item.getSellMargin());
-        productToAdd.setSellPriceIndustry(item.getSellPriceIndustry());
         productToAdd.setSellMarginIndustry(item.getSellMarginIndustry());
+
+        //TODO calculate for Sets or for Proforma
+        //for sets we need a total in sellPrice
+        //for invoices we need total in totalPrice
+
+        if(this.userFunction.equals(UserFunction.MAKE_SETS)){
+            Double sellMarginIndustry =
+                    item.getSellMarginIndustry() == null || item.getSellMarginIndustry() == 0.0
+                            ? item.getSellMargin()
+                            : item.getSellMarginIndustry();
+
+            productToAdd.setSellPrice(
+                    item.getSelectedAmount() * item.getPurchasePrice() * item.getSellMargin()
+            );
+
+            productToAdd.setSellPriceIndustry(
+                    item.getSelectedAmount() * item.getPurchasePrice() * sellMarginIndustry
+            );
+        }
+        else{
+            productToAdd.setSellPrice(item.getSellPrice());
+            productToAdd.setSellPriceIndustry(item.getSellPriceIndustry());
+        }
+
         if(item.getProductCode().startsWith("WU-")){
             productToAdd.setBWorkHour(true);
         }
@@ -2830,15 +2854,66 @@ public class SelectProductSubView extends VerticalLayout {
         }
     }
 
-    public void recalcSelectedItemsWithNewCustomer(){
-        if((selectedProductList != null) && (selectedProductList.size() > 0)){
-            selectedProductList.stream().forEach(product -> {
-                if(product.getBComment() == false){
-                    product.setTotalPrice(getTotalProductPrice(product));
-                }
-            });
+    public void recalcSelectedItemsWithNewCustomer(
+            Address oldAddress,
+            Address newAddress) {
+
+        if (selectedProductList == null || selectedProductList.isEmpty()) {
+            return;
         }
+
+        double oldDistance = oldAddress != null && oldAddress.getDistance() != null
+                ? oldAddress.getDistance()
+                : 0.0;
+
+        double newDistance = newAddress != null && newAddress.getDistance() != null
+                ? newAddress.getDistance()
+                : 0.0;
+
+        selectedProductList.forEach(product -> {
+
+            if (!Boolean.TRUE.equals(product.getBComment())) {
+
+                if (isKmProduct(product)) {
+
+                    double currentAmount = product.getSelectedAmount() != null
+                            ? product.getSelectedAmount()
+                            : 0.0;
+
+                    if (oldDistance > 0) {
+
+                        double numberOfTrips = currentAmount / oldDistance;
+
+                        product.setSelectedAmount(
+                                numberOfTrips * newDistance
+                        );
+
+                    } else {
+                        // Oude afstand niet gekend:
+                        // beter niet proberen aantal ritten af te leiden
+                        product.setSelectedAmount(newDistance);
+                    }
+                }
+
+                product.setTotalPrice(getTotalProductPrice(product));
+            }
+        });
     }
+
+    private boolean isKmProduct(Product product) {
+
+        return product != null
+                && product.getProductCode() != null
+                && KM_PRODUCT_CODES.contains(
+                product.getProductCode().trim().toUpperCase()
+        );
+    }
+
+    private static final Set<String> KM_PRODUCT_CODES = Set.of(
+            "KMV",
+            "KMV-KRAAN",
+            "KMV-OPLEGGER"
+    );
 
     private void showProductGrid() {
 

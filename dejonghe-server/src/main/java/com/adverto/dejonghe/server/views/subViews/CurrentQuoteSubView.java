@@ -1,5 +1,7 @@
 package com.adverto.dejonghe.server.views.subViews;
 
+import com.adverto.dejonghe.common.entities.customers.Address;
+import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.server.customEvents.GetSelectedQuoteEvent;
 import com.adverto.dejonghe.common.dbservices.QuoteService;
 import com.adverto.dejonghe.common.entities.invoice.Invoice;
@@ -777,6 +779,13 @@ public class CurrentQuoteSubView extends VerticalLayout {
         }
     }
 
+    private boolean containsIgnoreCase(String value, String filter) {
+        return value != null
+                && filter != null
+                && value.toLowerCase(Locale.ROOT)
+                .contains(filter.toLowerCase(Locale.ROOT));
+    }
+
     public void addItemsToQuoteGridFromFilter(){
         dataProvider.clearFilters();
         dataProvider.addFilter(item -> {
@@ -794,11 +803,25 @@ public class CurrentQuoteSubView extends VerticalLayout {
             }
 
             if (!filterName.getValue().isEmpty()) {
-                nameOk =(item.getWorkAddress().getStreet().toLowerCase().contains(filterName.getValue().toLowerCase())) ||
-                        (item.getWorkAddress().getCity().toLowerCase().contains(filterName.getValue().toLowerCase())) ||
-                        (item.getWorkAddress().getAddressName().toLowerCase().contains(filterName.getValue().toLowerCase())) ||
-                        (item.getCustomer().getName().toLowerCase().contains(filterName.getValue().toLowerCase())) ||
-                        (item.getCustomer().getVatNumber().toLowerCase().contains(filterName.getValue().toLowerCase()));
+
+                String filter = filterName.getValue();
+
+                Address workAddress = item.getWorkAddress();
+                Customer customer = item.getCustomer();
+
+                nameOk =
+                        (workAddress != null &&
+                                (
+                                        containsIgnoreCase(workAddress.getStreet(), filter) ||
+                                                containsIgnoreCase(workAddress.getCity(), filter) ||
+                                                containsIgnoreCase(workAddress.getAddressName(), filter)
+                                ))
+                                ||
+                                (customer != null &&
+                                        (
+                                                containsIgnoreCase(customer.getName(), filter) ||
+                                                        containsIgnoreCase(customer.getVatNumber(), filter)
+                                        ));
             }
 
             if(!filterSubject.getValue().isEmpty()){

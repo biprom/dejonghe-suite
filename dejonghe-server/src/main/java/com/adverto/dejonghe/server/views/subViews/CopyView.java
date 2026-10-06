@@ -1823,7 +1823,7 @@ public class CopyView extends Div {
         return parts;
     }
 
-    private void addItemsFromGrid(List<Product> productList) {
+    public void addItemsFromGrid(List<Product> productList) {
         productListToShowInGridFrom.clear();
         productListToShowInGridFrom.addAll(productList);
         dataViewFrom = fromGrid.setItems(productListToShowInGridFrom);

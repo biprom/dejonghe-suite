@@ -128,7 +128,27 @@ public class SetView extends VerticalLayout implements BeforeEnterObserver {
         verticalLayout.setSpacing(false);
         verticalLayout.setMargin(false);
         secondarySplitLayout.addToPrimary(verticalLayout);
-        secondarySplitLayout.addToSecondary(getSelectedProductGridForSets(), getSelectedWorkhoursGridForSets());
+
+        VerticalLayout gridLayout = new VerticalLayout();
+        gridLayout.setSizeFull();
+        gridLayout.setPadding(false);
+        gridLayout.setSpacing(false);
+
+        Grid<Product> productGrid = getSelectedProductGridForSets();
+        Grid<Product> workhoursGrid = getSelectedWorkhoursGridForSets();
+
+        productGrid.setAllRowsVisible(false);
+        workhoursGrid.setAllRowsVisible(false);
+
+        productGrid.setSizeFull();
+        workhoursGrid.setSizeFull();
+
+        gridLayout.add(productGrid, workhoursGrid);
+
+        gridLayout.setFlexGrow(1, productGrid);
+        gridLayout.setFlexGrow(1, workhoursGrid);
+
+        secondarySplitLayout.addToSecondary(gridLayout);
         mainSplitLayout.addToSecondary(secondarySplitLayout);
         this.setHeightFull();
         add(mainSplitLayout);
@@ -168,10 +188,9 @@ public class SetView extends VerticalLayout implements BeforeEnterObserver {
     private Grid<Product> getSelectedWorkhoursGridForSets() {
 
         selectedWorkhoursGrid = new Grid<>();
-        selectedWorkhoursGrid.setWidth("100%");
         selectedWorkhoursGrid.setAllRowsVisible(true);
         selectedWorkhoursGrid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES);
-//
+
         Grid.Column<Product> codeColumn = selectedWorkhoursGrid.addComponentColumn(item -> {
             if (item.getProductCode() != null) {
                 if (item.isBoldMode() == false) {
@@ -399,7 +418,6 @@ public class SetView extends VerticalLayout implements BeforeEnterObserver {
 
         selectedProductGrid = new Grid<>();
         selectedProductGrid.setWidth("100%");
-        selectedProductGrid.setAllRowsVisible(true);
         selectedProductGrid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES);
 
         Grid.Column<Product> codeColumn = selectedProductGrid.addComponentColumn(item -> {
@@ -972,7 +990,7 @@ public class SetView extends VerticalLayout implements BeforeEnterObserver {
 
     Runnable updateFooter = () -> {
         double totalProductA = selectedSet.getSetList().stream().filter(product -> product.getBWorkHour() == false)
-                .mapToDouble(product -> product.getSelectedAmount() * product.getSellPrice())
+                .mapToDouble(product -> product.getSellPrice())
                 .sum();
 
         Span spanTotalProductA = new Span(df.format(totalProductA) + " €");
@@ -984,10 +1002,10 @@ public class SetView extends VerticalLayout implements BeforeEnterObserver {
         double totalProductI = selectedSet.getSetList().stream().filter(product -> product.getBWorkHour() == false)
                 .mapToDouble(product -> {
                     if(product.getSellPriceIndustry() != null && product.getSellPriceIndustry() > 0){
-                        return product.getSelectedAmount() * product.getSellPriceIndustry();
+                        return product.getSellPriceIndustry();
                     }
                     else{
-                        return product.getSelectedAmount() * product.getSellPrice();
+                        return product.getSellPrice();
                     }
                 })
                 .sum();
@@ -1000,7 +1018,7 @@ public class SetView extends VerticalLayout implements BeforeEnterObserver {
 
         double totalWorkhoursA = selectedSet.getSetList().stream().filter(product -> product.getBWorkHour() == true)
                 .mapToDouble(product -> {
-                        return product.getSelectedAmount() * product.getSellPrice();
+                        return product.getSellPrice();
                 })
                 .sum();
 
@@ -1012,7 +1030,7 @@ public class SetView extends VerticalLayout implements BeforeEnterObserver {
                 .setComponent(spanTotalWorkhoursA);
 
         double totalWorkhoursI = selectedSet.getSetList().stream().filter(product -> product.getBWorkHour() == true)
-                .mapToDouble(product -> product.getSelectedAmount() * product.getSellPriceIndustry())
+                .mapToDouble(product -> product.getSellPriceIndustry())
                 .sum();
 
         Span spanTotalWorkhoursI = new Span(df.format(totalWorkhoursI) + " €");

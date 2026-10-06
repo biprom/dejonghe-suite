@@ -356,9 +356,14 @@ public class DashboardView extends VerticalLayout {
             dialog.setMaxHeight("none");
             Button openButtonnew = new Button("Open Werkbon");
             openButtonnew.setWidth("100%");
-            openButtonnew.setVisible(false);
+            Optional<WorkOrder> selectedWorkOrder = workOrderService.getWorkOrderById(customData.getId());
+            if(selectedWorkOrder.get().getWorkOrderStatus().equals(WorkOrderStatus.RUNNING)){
+                openButtonnew.setVisible(true);
+            }
+            else{
+                openButtonnew.setVisible(false);
+            }
             openButtonnew.addClickListener(e -> {
-                Optional<WorkOrder> selectedWorkOrder = workOrderService.getWorkOrderById(customData.getId());
                 if(selectedWorkOrder.isPresent()) {
                     eventPublisher.publishEvent(new GetSelectedWorkOrderEvent(this, selectedWorkOrder.get()));
                 }
@@ -470,29 +475,6 @@ public class DashboardView extends VerticalLayout {
         updateChartRange(
                 day,
                 day
-        );
-    }
-
-    private void updateSelectedRange(
-            LocalDate startDate,
-            LocalDate endDate) {
-
-        if (startDate == null) {
-            return;
-        }
-
-        if (endDate == null) {
-            endDate = startDate;
-        }
-
-        selectedStartDate = startDate;
-        selectedEndDate = endDate;
-
-        selectedDay = startDate;
-
-        updateChartRange(
-                startDate,
-                endDate
         );
     }
 

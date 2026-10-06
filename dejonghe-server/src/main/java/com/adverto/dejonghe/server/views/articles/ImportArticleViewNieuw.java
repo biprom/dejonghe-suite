@@ -382,10 +382,11 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                                 set.getSetList().stream().filter(item -> item.getProductCode().matches(selectedProduct.getProductCode())).forEach(item -> {
                                     item.setPurchasePrice(selectedProduct.getPurchasePrice());
                                     item.setSellMargin(selectedProduct.getSellMargin());
-                                    item.setSellPrice(selectedProduct.getSellPrice());
+                                    item.setSellPrice(item.getSelectedAmount() * selectedProduct.getSellMargin() * selectedProduct.getPurchasePrice());
                                     item.setSellMarginIndustry(selectedProduct.getSellMarginIndustry());
-                                    item.setSellPriceIndustry(selectedProduct.getSellPriceIndustry());
+                                    item.setSellPriceIndustry(item.getSelectedAmount() * selectedProduct.getSellMarginIndustry() * selectedProduct.getPurchasePrice());
                                 });
+                                set.setPurchasePrice(setService.tryToCalculatePurchasePrice(set));
                                 set.setSellPrice(setService.tryToCalculateSellAgroPrice(set));
                                 set.setSellPriceIndustry(setService.tryToCalculateSellIndustryPrice(set));
                                 set.setSellMargin(setService.tryToCalculateAgroMargin(set));
@@ -2645,6 +2646,12 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         String result4 = cbProductLevel4.getValue() == null ? "" : cbProductLevel4.getValue().getName();
         String result5 = cbProductLevel5.getValue() == null ? "" : cbProductLevel5.getValue().getName();
         copyView.goToSelectedFolder(result1, result2, result3, result4, result5);
+
+        if((result1 == "") && (result2 == "") && (result3 == "") && (result4 == "") && (result5 == "")) {
+            if((grid.getSelectedItems() != null) && (grid.getSelectedItems().size() > 0)){
+                copyView.addItemsFromGrid(grid.getSelectedItems().stream().toList());
+            }
+        }
     }
 
     private void orderProduct(){

@@ -668,7 +668,7 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
                     dialog.close();
 
                     updateCustomer(newAddress);
-                    selectProductSubView.recalcSelectedItemsWithNewCustomer();
+                    selectProductSubView.recalcSelectedItemsWithNewCustomer(oldAddress,newAddress);
                     try {
                         selectedInvoice.setCustomer(selectedCustomer);
                         invoiceBinder.writeBean(selectedInvoice);
@@ -1019,6 +1019,12 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
                     checkbApproved.setVisible(false);
                     checkbRejected.setVisible(false);
                     checkbToCheck.setVisible(false);
+                    if((selectedCustomer.getBProjectCustomer() == null) || (selectedCustomer.getBProjectCustomer() == false)){
+                        projectCustomerAddressComboBox.setVisible(false);
+                    }
+                    else{
+                        projectCustomerAddressComboBox.setVisible(true);
+                    }
                     pageTitle = "Factuur";
                     UI.getCurrent().getPage().setTitle(pageTitle);
                     openedFromFinalInvoiceOrNot = true;
@@ -1030,6 +1036,12 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
                     checkbApproved.setVisible(true);
                     checkbRejected.setVisible(true);
                     checkbToCheck.setVisible(true);
+                    if((selectedCustomer.getBProjectCustomer() == null) || (selectedCustomer.getBProjectCustomer() == false)){
+                        projectCustomerAddressComboBox.setVisible(false);
+                    }
+                    else{
+                        projectCustomerAddressComboBox.setVisible(true);
+                    }
                     pageTitle = "Proforma";
                     UI.getCurrent().getPage().setTitle(pageTitle);
                     openedFromFinalInvoiceOrNot = false;

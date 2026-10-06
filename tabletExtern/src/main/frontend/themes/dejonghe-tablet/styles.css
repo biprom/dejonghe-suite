@@ -295,3 +295,9 @@ vaadin-side-nav-item:hover vaadin-icon {
     padding: var(--lumo-space-s);
     margin-bottom: var(--lumo-space-m);
 }
+
+vaadin-split-layout.header-split-locked::part(splitter) {
+    pointer-events: none;
+    cursor: not-allowed;
+    opacity: 0.35;
+}

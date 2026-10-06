@@ -1,5 +1,6 @@
 package com.adverto.dejonghe.application.tests;
 
+import com.adverto.dejonghe.server.Application;
 import com.adverto.dejonghe.server.Controllers.GoogleRestController;
 import com.adverto.dejonghe.common.dbservices.CustomerService;
 import com.adverto.dejonghe.common.dbservices.ProductService;
@@ -13,11 +14,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
-@SpringBootTest
+@SpringBootTest(classes = Application.class)
 class Tests{
     CustomerImportRepo customerImportRepo;
     CustomerService customerService;
@@ -35,27 +38,27 @@ class Tests{
         this.googleRestController = googleRestController;
     }
 
-    @Test
-    void setUpCustomers(){
-        Optional<List<Customer>> allCustomers = customerService.getAllCustomers();
-        allCustomers.ifPresent(customers -> {
-            for (Customer customer : customers) {
-                if(customer.getAddresses().size() == 1){
-                    Address originalAddress = customer.getAddresses().get(0);
-                    Address copyAddress = originalAddress.clone();
-
-                    originalAddress.setInvoiceAddress(true);
-                    copyAddress.setInvoiceAddress(false);
-
-                    customer.getAddresses().add(copyAddress);
-                    customerService.save(customer);
-                }
-                else{
-                    //DO nothing fucker!
-                }
-            }
-        });
-    }
+//    @Test
+//    void setUpCustomers(){
+//        Optional<List<Customer>> allCustomers = customerService.getAllCustomers();
+//        allCustomers.ifPresent(customers -> {
+//            for (Customer customer : customers) {
+//                if(customer.getAddresses().size() == 1){
+//                    Address originalAddress = customer.getAddresses().get(0);
+//                    Address copyAddress = originalAddress.clone();
+//
+//                    originalAddress.setInvoiceAddress(true);
+//                    copyAddress.setInvoiceAddress(false);
+//
+//                    customer.getAddresses().add(copyAddress);
+//                    customerService.save(customer);
+//                }
+//                else{
+//                    //DO nothing fucker!
+//                }
+//            }
+//        });
+//    }
 
 
 
@@ -135,5 +138,17 @@ class Tests{
                 customerService.save(customer);
             }
         }
+    }
+
+    @Test
+    void getCustomersWithoutWorkAddress(){
+        Optional<List<Customer>> allCustomers = customerService.getAllCustomers();
+        allCustomers.ifPresent(customers -> {
+            for (Customer customer : customers) {
+                if((customer.getAddresses() != null)){
+                    System.out.println(customer.getName() + " Aantal adressen : " + customer.getAddresses().size());
+                }
+            }
+        });
     }
 }

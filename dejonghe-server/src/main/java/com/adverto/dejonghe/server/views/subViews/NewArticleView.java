@@ -217,12 +217,16 @@ public class NewArticleView extends Div {
                             for (Product set : allSetsContaining.get()) {
                                 set.getSetList().stream().filter(item -> item.getProductCode().matches(product.getProductCode())).forEach(item -> {
                                     item.setPurchasePrice(product.getPurchasePrice());
-                                    productServices.calcSellPriceAgroFromPurchasePriceAndMargin(item);
-                                    productServices.calcSellPriceIndustryFromPurchasePriceAndMarginIndustry(item);
+                                    item.setSellMargin(product.getSellMargin());
+                                    item.setSellPrice(item.getSelectedAmount() * product.getSellMargin() * product.getPurchasePrice());
+                                    item.setSellMarginIndustry(product.getSellMarginIndustry());
+                                    item.setSellPriceIndustry(item.getSelectedAmount() * product.getSellMarginIndustry() * product.getPurchasePrice());
                                 });
                                 set.setPurchasePrice(setService.tryToCalculatePurchasePrice(set));
                                 set.setSellPrice(setService.tryToCalculateSellAgroPrice(set));
                                 set.setSellPriceIndustry(setService.tryToCalculateSellIndustryPrice(set));
+                                set.setSellMargin(setService.tryToCalculateAgroMargin(set));
+                                set.setSellMarginIndustry(setService.tryToCalculateSellIndustryMargin(set));
                                 productService.save(set);
                             }
 

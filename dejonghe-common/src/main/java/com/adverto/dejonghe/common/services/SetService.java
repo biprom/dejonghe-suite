@@ -37,7 +37,7 @@ public class SetService {
     public Double tryToCalculateSellAgroPrice(Product set) {
         try{
             if((set.getSetList() != null) && (set.getSetList().size() > 0)){
-                Double totalSellPriceSetAgro = set.getSetList().stream().filter(product -> product.getSellPrice() != null).map(product -> product.getSelectedAmount() * product.getSellPrice()).reduce(0.0, Double::sum);
+                Double totalSellPriceSetAgro = set.getSetList().stream().filter(product -> product.getSellPrice() != null).map(product ->  product.getSellPrice()).reduce(0.0, Double::sum);
                 return totalSellPriceSetAgro;
             }
             else{
@@ -64,7 +64,7 @@ public class SetService {
                                             ? industryPrice
                                             : agroPrice;
 
-                            return product.getSelectedAmount() * (priceToUse != null ? priceToUse : 0.0);
+                            return  (priceToUse != null ? priceToUse : 0.0);
                         })
                         .reduce(0.0, Double::sum);
             } else {

@@ -35,6 +35,7 @@ import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.treegrid.TreeGrid;
 import com.vaadin.flow.data.provider.hierarchy.TreeData;
 import com.vaadin.flow.data.provider.hierarchy.TreeDataProvider;
+import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Scope;
@@ -188,7 +189,16 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
                         .format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))
                 .setHeader("Datum")
                 .setSortable(true)
-                .setComparator(workorder -> workorder.getWorkDateTime().toLocalDate())
+                .setComparator(
+                        Comparator.comparing(
+                                        (WorkOrder workorder) ->
+                                                workorder.getWorkDateTime().toLocalDate()
+                                )
+                                .thenComparing(
+                                        workorder ->
+                                                new ObjectId(workorder.getId()).getTimestamp()
+                                )
+                )
                 .setFlexGrow(1);
         Grid.Column<WorkOrder> columnSubject = pendingWorkOrdersGrid.addComponentColumn(workOrder -> {
             Span span = new Span(getWorkOrderDiscriptions(workOrder));

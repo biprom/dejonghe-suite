@@ -108,6 +108,10 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
     ToolsWorkhoursView toolsWorkhoursView;
     ToolsFixedPriceView toolsFixedPriceView;
 
+    private boolean newWorkOrderMode = false;
+    private static final double HEADER_POSITION_NEW = 90;
+    private static final double HEADER_POSITION_NORMAL = 50;
+
     Optional<List<Address>> allCustomerAddresses;
 
     Consumer<AddRemoveProductEvent> myAddRemoveConsumer;
@@ -211,6 +215,12 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
     Button slideButton;
     Icon leftArrowIcon;
     Icon rightArrowIcon;
+
+    Button verticalSlideButton;
+    Icon upArrowIcon;
+    Icon downArrowIcon;
+
+    private boolean headerCollapsed = false;
 
     VirtualList<Tools> toolsVirtualList;
 
@@ -924,7 +934,6 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         finishWorkOrderDialog.addOpenedChangeListener(listener -> {
             errorList = workOrderServices.checkWorkOrderBeforeSendToInvoice(selectedWorkOrder, errorList);
             if(errorList.size() > 0){
-                //TODO check if it is a pickup or not -> workhours doesn't need to be filled in
                 if(!selectedWorkOrder.getWorkOrderHeaderList().get(0).getWorkType().equals(WorkType.PICKUP)){
                     errorDialogErrorsVerticalLayout.removeAll();
                     for(String error : errorList){
@@ -984,8 +993,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             } catch (ValidationException e) {
                 Notification.show("Deze werkbon kon niet worden bewaard.");
             }
-            readNewWorkOrder();
-
+            UI.getCurrent().getPage().setLocation("/werkbon");
         });
         saveButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         return saveButton;
@@ -1154,14 +1162,46 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 .withNullRepresentation("")
                 .withConverter(new StringToDoubleConverter("Dit is geen decimaal getal!"))
                 .bind(WorkOrderHeader::getTunnelTax, WorkOrderHeader::setTunnelTax);
-        workOrderHeaderBinder.addValueChangeListener(workOrderHeader -> {
+        workOrderHeaderBinder.addValueChangeListener(event -> {
+
+            updateWorkOrderUiState();
+
             try {
-                updateFinishButtonVisibility();
-                saveSelectedWorkOrder();
+                boolean workhoursValid =
+                        selectedWorkOrderTimes != null
+                                && !selectedWorkOrderTimes.isEmpty();
+
+                if (workhoursValid) {
+                    saveSelectedWorkOrder();
+                }
             } catch (ValidationException e) {
-                Notification.show("Kon de werkbon nog niet bewaren");
+                Notification.show("Werkbon is niet volledig ingevuld");
             }
         });
+    }
+
+    private void updateWorkOrderUiState() {
+
+        boolean valid = isHeaderValid();
+
+        if (newWorkOrderMode && !valid) {
+            headerSplitLayout.setSplitterPosition(HEADER_POSITION_NEW);
+            headerSplitLayout.addClassName("header-split-locked");
+        } else {
+            headerSplitLayout.removeClassName("header-split-locked");
+        }
+
+        if (!valid) {
+            mainSplitLayout.addClassName("main-split-locked");
+
+            sidebarCollapsed = true;
+            mainSplitLayout.setSplitterPosition(0);
+        } else {
+            mainSplitLayout.removeClassName("main-split-locked");
+        }
+
+        updateSplitButtonsVisibility();
+        updateFinishButtonVisibility();
     }
 
     private void setUpWorkOrderBinder() {
@@ -1207,11 +1247,10 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 .bind(WorkOrder::getExtraEmployeesTeam4, WorkOrder::setExtraEmployeesTeam4);
         workOrderBinder.addValueChangeListener(workOrder -> {
             try {
-
-                updateFinishButtonVisibility();
+                updateWorkOrderUiState();
 
                 boolean workhoursValid = ((!selectedWorkOrderTimes.isEmpty()));
-                if(workhoursValid && workhoursValid) {
+                if(workhoursValid) {
                     saveSelectedWorkOrder();
                 }
                 else{
@@ -1230,18 +1269,9 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             return;
         }
 
-        boolean isStarter = selectedWorkOrder.getStarter();
-
-        boolean workOrderValid =
-                workOrderBinder.validate().isOk();
-
-        boolean workOrderHeaderValid =
-                workOrderHeaderBinder.validate().isOk();
-
         finishButton.setVisible(
-                isStarter
-                        && workOrderValid
-                        && workOrderHeaderValid
+                Boolean.TRUE.equals(selectedWorkOrder.getStarter())
+                        && isHeaderValid()
         );
     }
 
@@ -1257,6 +1287,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             sidebarCollapsed = !sidebarCollapsed;
             updateSidebar();
         });
+
         slideButton.setAriaLabel("Expand/collapse sidebar");
         slideButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
         slideButton.getStyle().set("float", "right");
@@ -1272,21 +1303,120 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         headerSplitLayout.setOrientation(SplitLayout.Orientation.VERTICAL);
         headerSplitLayout.getStyle().set("overflow", "hidden");
 
-        headerSplitLayout.getElement()
-                .addEventListener("splitter-dragend", event -> {
-                    selectProductSubView.setSplitPosition(headerSplitLayout.getSplitterPosition());
-                });
+        headerSplitLayout.addSplitterDragEndListener(event -> {
+            selectProductSubView.setSplitPosition(
+                    headerSplitLayout.getSplitterPosition()
+            );
+        });
+
+        verticalSlideButton = new Button();
+
+        upArrowIcon = VaadinIcon.ARROW_UP.create();
+        downArrowIcon = VaadinIcon.ARROW_DOWN.create();
+
+        verticalSlideButton.setIcon(upArrowIcon);
+        verticalSlideButton.setAriaLabel("Open/sluit materialenlijst");
+        verticalSlideButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+
+        verticalSlideButton.addClickListener(event -> {
+
+            if (!isHeaderValid()) {
+                return;
+            }
+
+            headerCollapsed = !headerCollapsed;
+
+            if (headerCollapsed) {
+
+                // Hoofding kleiner -> meer plaats voor geselecteerde materialen
+                headerSplitLayout.setSplitterPosition(35);
+                verticalSlideButton.setIcon(downArrowIcon);
+
+            } else {
+
+                // Hoofding terug groter
+                headerSplitLayout.setSplitterPosition(
+                        newWorkOrderMode
+                                ? HEADER_POSITION_NEW
+                                : HEADER_POSITION_NORMAL
+                );
+
+                verticalSlideButton.setIcon(upArrowIcon);
+            }
+        });
+    }
+
+    private void updateMainSplitState() {
+
+        if (mainSplitLayout == null) {
+            return;
+        }
+
+        if (isHeaderValid()) {
+            mainSplitLayout.removeClassName("main-split-locked");
+        } else {
+            mainSplitLayout.addClassName("main-split-locked");
+
+            // materiaalkeuze dicht houden
+            sidebarCollapsed = true;
+            mainSplitLayout.setSplitterPosition(0);
+        }
+    }
+
+    private void updateMaterialSelectionButtonVisibility() {
+
+        if (slideButton == null) {
+            return;
+        }
+
+        boolean valid = isHeaderValid();
+
+        slideButton.setVisible(valid);
+
+        if (valid) {
+            slideButton.setIcon(
+                    sidebarCollapsed ? rightArrowIcon : leftArrowIcon
+            );
+        }
+    }
+
+    private void updateHeaderSplitState() {
+
+        if (headerSplitLayout == null) {
+            return;
+        }
+
+        if (!newWorkOrderMode) {
+            headerSplitLayout.removeClassName("header-split-locked");
+            return;
+        }
+
+        if (isHeaderValid()) {
+            // Alles correct ingevuld -> splitter vrijgeven
+            headerSplitLayout.removeClassName("header-split-locked");
+
+        } else {
+            // Nog niet volledig -> op 90% houden en blokkeren
+            headerSplitLayout.setSplitterPosition(HEADER_POSITION_NEW);
+            headerSplitLayout.addClassName("header-split-locked");
+        }
     }
 
     private void updateSidebar() {
-        if(customerByWorkAddress == null){
-            rightArrowIcon.getStyle()
-                    .set("color", "gray")
-                    .set("opacity", "0.5")
-                    .set("pointer-events", "none");
+
+        if (!isHeaderValid()) {
+            sidebarCollapsed = true;
+            mainSplitLayout.setSplitterPosition(0);
+            return;
         }
-        slideButton.setIcon(sidebarCollapsed ? rightArrowIcon : leftArrowIcon);
-        mainSplitLayout.setSplitterPosition(sidebarCollapsed ? 0 : 90);
+
+        slideButton.setIcon(
+                sidebarCollapsed ? rightArrowIcon : leftArrowIcon
+        );
+
+        mainSplitLayout.setSplitterPosition(
+                sidebarCollapsed ? 0 : 90
+        );
     }
 
     private FormLayout getWorkOrderHeader() {
@@ -1554,7 +1684,6 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                         tfFleetHours.setValue("0");
                         tfFleetHours.setEnabled(false);
                     } else {
-                        //TODO recalc amout of hours
                         tfFleetHours.setValue("");
                         calcFleetHoursAgain();
                         tfFleetHours.setPlaceholder(String.valueOf(proposalAmountHoursCrane));
@@ -1632,15 +1761,32 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         Icon homeIcon1 = VaadinIcon.WORKPLACE.create();
         homeIcon1.addClickListener(e -> {
-            selectedTeam = 1;
-            selectProductSubView.setSelectedTeam(selectedTeam-1);
-            workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(0));
-            addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(0).getWorkOrderTimeList());
-            addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(0).getBowlEntityList());
-            horizontalLayout1.setClassName("selected");
-            horizontalLayout2.setClassName("");
-            horizontalLayout3.setClassName("");
-            horizontalLayout4.setClassName("");
+
+            tryChangeTeam(1, () -> {
+
+                workOrderHeaderBinder.readBean(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(0)
+                );
+
+                addItemsToWorkTimeGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(0)
+                                .getWorkOrderTimeList()
+                );
+
+                addItemsToBowlGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(0)
+                                .getBowlEntityList()
+                );
+
+                selectedTeam = 1;
+
+                selectProductSubView.setSelectedTeam(selectedTeam - 1);
+
+                horizontalLayout1.setClassName("selected");
+                horizontalLayout2.setClassName("");
+                horizontalLayout3.setClassName("");
+                horizontalLayout4.setClassName("");
+            });
         });
 
         cbExtraEmployees1.setWidth("100%");
@@ -1684,15 +1830,32 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         Icon homeIcon2 = VaadinIcon.WORKPLACE.create();
         homeIcon2.addClickListener(e -> {
-            workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(1));
-            addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(1).getWorkOrderTimeList());
-            addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(1).getBowlEntityList());
-            selectedTeam = 2;
-            selectProductSubView.setSelectedTeam(selectedTeam-1);
-            horizontalLayout1.setClassName("");
-            horizontalLayout2.setClassName("selected");
-            horizontalLayout3.setClassName("");
-            horizontalLayout4.setClassName("");
+
+            tryChangeTeam(2, () -> {
+
+                workOrderHeaderBinder.readBean(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(1)
+                );
+
+                addItemsToWorkTimeGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(1)
+                                .getWorkOrderTimeList()
+                );
+
+                addItemsToBowlGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(1)
+                                .getBowlEntityList()
+                );
+
+                selectedTeam = 2;
+
+                selectProductSubView.setSelectedTeam(selectedTeam - 1);
+
+                horizontalLayout1.setClassName("");
+                horizontalLayout2.setClassName("selected");
+                horizontalLayout3.setClassName("");
+                horizontalLayout4.setClassName("");
+            });
         });
 
         cbExtraEmployees2.setWidth("100%");
@@ -1734,15 +1897,32 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         Icon homeIcon3 = VaadinIcon.WORKPLACE.create();
         homeIcon3.addClickListener(e -> {
-            workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(2));
-            addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(2).getWorkOrderTimeList());
-            addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(2).getBowlEntityList());
-            selectedTeam = 3;
-            selectProductSubView.setSelectedTeam(selectedTeam-1);
-            horizontalLayout1.setClassName("");
-            horizontalLayout2.setClassName("");
-            horizontalLayout3.setClassName("selected");
-            horizontalLayout4.setClassName("");
+
+            tryChangeTeam(3, () -> {
+
+                workOrderHeaderBinder.readBean(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(2)
+                );
+
+                addItemsToWorkTimeGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(2)
+                                .getWorkOrderTimeList()
+                );
+
+                addItemsToBowlGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(2)
+                                .getBowlEntityList()
+                );
+
+                selectedTeam = 3;
+
+                selectProductSubView.setSelectedTeam(selectedTeam - 1);
+
+                horizontalLayout1.setClassName("");
+                horizontalLayout2.setClassName("");
+                horizontalLayout3.setClassName("selected");
+                horizontalLayout4.setClassName("");
+            });
         });
 
         cbExtraEmployees3.setWidth("100%");
@@ -1782,15 +1962,32 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         Icon homeIcon4 = VaadinIcon.WORKPLACE.create();
         homeIcon4.addClickListener(e -> {
-            workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(3));
-            addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(3).getWorkOrderTimeList());
-            addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(3).getBowlEntityList());
-            selectedTeam = 4;
-            selectProductSubView.setSelectedTeam(selectedTeam-1);
-            horizontalLayout1.setClassName("");
-            horizontalLayout2.setClassName("");
-            horizontalLayout3.setClassName("");
-            horizontalLayout4.setClassName("selected");
+
+            tryChangeTeam(4, () -> {
+
+                workOrderHeaderBinder.readBean(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(3)
+                );
+
+                addItemsToWorkTimeGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(3)
+                                .getWorkOrderTimeList()
+                );
+
+                addItemsToBowlGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(3)
+                                .getBowlEntityList()
+                );
+
+                selectedTeam = 4;
+
+                selectProductSubView.setSelectedTeam(selectedTeam - 1);
+
+                horizontalLayout1.setClassName("");
+                horizontalLayout2.setClassName("");
+                horizontalLayout3.setClassName("");
+                horizontalLayout4.setClassName("selected");
+            });
         });
 
         cbExtraEmployees4.setWidth("100%");
@@ -1883,15 +2080,34 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         Icon moveIcon1 = VaadinIcon.CAR.create();
         moveIcon1.addClickListener(e -> {
-            workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(0));
-            addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(0).getWorkOrderTimeList());
-            addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(0).getBowlEntityList());
-            selectedTeam = 1;
-            selectProductSubView.setSelectedTeam(selectedTeam-1);
-            horizontalLayout1.setClassName("selected");
-            horizontalLayout2.setClassName("");
-            horizontalLayout3.setClassName("");
-            horizontalLayout4.setClassName("");
+
+            tryChangeTeam(1, () -> {
+
+                activeTeams.add(1);
+
+                workOrderHeaderBinder.readBean(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(0)
+                );
+
+                addItemsToWorkTimeGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(0)
+                                .getWorkOrderTimeList()
+                );
+
+                addItemsToBowlGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(0)
+                                .getBowlEntityList()
+                );
+
+                selectedTeam = 1;
+
+                selectProductSubView.setSelectedTeam(selectedTeam - 1);
+
+                horizontalLayout1.setClassName("selected");
+                horizontalLayout2.setClassName("");
+                horizontalLayout3.setClassName("");
+                horizontalLayout4.setClassName("");
+            });
         });
 
         cbExtraEmployees1.setWidth("100%");
@@ -1932,16 +2148,34 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         Icon moveIcon2 = VaadinIcon.CAR.create();
         moveIcon2.addClickListener(e -> {
-            activeTeams.add(2);
-            workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(1));
-            addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(1).getWorkOrderTimeList());
-            addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(1).getBowlEntityList());
-            selectedTeam = 2;
-            selectProductSubView.setSelectedTeam(selectedTeam-1);
-            horizontalLayout1.setClassName("");
-            horizontalLayout2.setClassName("selected");
-            horizontalLayout3.setClassName("");
-            horizontalLayout4.setClassName("");
+
+            tryChangeTeam(2, () -> {
+
+                activeTeams.add(2);
+
+                workOrderHeaderBinder.readBean(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(1)
+                );
+
+                addItemsToWorkTimeGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(1)
+                                .getWorkOrderTimeList()
+                );
+
+                addItemsToBowlGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(1)
+                                .getBowlEntityList()
+                );
+
+                selectedTeam = 2;
+
+                selectProductSubView.setSelectedTeam(selectedTeam - 1);
+
+                horizontalLayout1.setClassName("");
+                horizontalLayout2.setClassName("selected");
+                horizontalLayout3.setClassName("");
+                horizontalLayout4.setClassName("");
+            });
         });
 
         cbExtraEmployees2.setWidth("100%");
@@ -1982,16 +2216,34 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         Icon moveIcon3 = VaadinIcon.CAR.create();
         moveIcon3.addClickListener(e -> {
-            activeTeams.add(3);
-            workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(2));
-            addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(2).getWorkOrderTimeList());
-            addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(2).getBowlEntityList());
-            selectedTeam = 3;
-            selectProductSubView.setSelectedTeam(selectedTeam-1);
-            horizontalLayout1.setClassName("");
-            horizontalLayout2.setClassName("");
-            horizontalLayout3.setClassName("selected");
-            horizontalLayout4.setClassName("");
+
+            tryChangeTeam(3, () -> {
+
+                activeTeams.add(3);
+
+                workOrderHeaderBinder.readBean(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(2)
+                );
+
+                addItemsToWorkTimeGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(2)
+                                .getWorkOrderTimeList()
+                );
+
+                addItemsToBowlGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(2)
+                                .getBowlEntityList()
+                );
+
+                selectedTeam = 3;
+
+                selectProductSubView.setSelectedTeam(selectedTeam - 1);
+
+                horizontalLayout1.setClassName("");
+                horizontalLayout2.setClassName("");
+                horizontalLayout3.setClassName("selected");
+                horizontalLayout4.setClassName("");
+            });
         });
 
         cbExtraEmployees3.setWidth("100%");
@@ -2031,16 +2283,34 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         Icon moveIcon4 = VaadinIcon.CAR.create();
         moveIcon4.addClickListener(e -> {
-            activeTeams.add(4);
-            workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(3));
-            addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(3).getWorkOrderTimeList());
-            addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(3).getBowlEntityList());
-            selectedTeam = 4;
-            selectProductSubView.setSelectedTeam(selectedTeam-1);
-            horizontalLayout1.setClassName("");
-            horizontalLayout2.setClassName("");
-            horizontalLayout3.setClassName("");
-            horizontalLayout4.setClassName("selected");
+
+            tryChangeTeam(4, () -> {
+
+                activeTeams.add(4);
+
+                workOrderHeaderBinder.readBean(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(3)
+                );
+
+                addItemsToWorkTimeGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(3)
+                                .getWorkOrderTimeList()
+                );
+
+                addItemsToBowlGrid(
+                        selectedWorkOrder.getWorkOrderHeaderList().get(3)
+                                .getBowlEntityList()
+                );
+
+                selectedTeam = 4;
+
+                selectProductSubView.setSelectedTeam(selectedTeam - 1);
+
+                horizontalLayout1.setClassName("");
+                horizontalLayout2.setClassName("");
+                horizontalLayout3.setClassName("");
+                horizontalLayout4.setClassName("selected");
+            });
         });
 
         cbExtraEmployees4.setWidth("100%");
@@ -2139,6 +2409,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         });
 
         horizontalLayout.add(slideButton);
+        horizontalLayout.add(verticalSlideButton);
         horizontalLayout.add(goBackButton);
         horizontalLayout.add(addTabButton);
         horizontalLayout.add(buddyTab);
@@ -2146,6 +2417,28 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         horizontalLayout.setAlignSelf(FlexComponent.Alignment.END, searchRunningWorkorders);
 
         return horizontalLayout;
+    }
+
+    private void updateSplitButtonsVisibility() {
+
+        boolean valid = isHeaderValid();
+
+        slideButton.setVisible(valid);
+        verticalSlideButton.setVisible(valid);
+
+        if (valid) {
+            slideButton.setIcon(
+                    sidebarCollapsed
+                            ? rightArrowIcon
+                            : leftArrowIcon
+            );
+
+            verticalSlideButton.setIcon(
+                    headerCollapsed
+                            ? downArrowIcon
+                            : upArrowIcon
+            );
+        }
     }
 
     private boolean isWorkOrderComplete() {
@@ -2344,9 +2637,14 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             });
 
     private void setSelectedWorkOrder(WorkOrder workOrder) {
+        newWorkOrderMode = false;
+        headerCollapsed = false;
+        sidebarCollapsed = true;
         selectedWorkOrder = workOrder;
         workOrderBinder.readBean(selectedWorkOrder);
         workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(0));
+        headerSplitLayout.setSplitterPosition(HEADER_POSITION_NORMAL);
+        updateWorkOrderUiState();
         selectProductSubView.setUserFunctionAndDocumentDate(UserFunction.TECHNICIAN, selectedWorkOrder.getWorkDateTime().toLocalDate());
         customerByWorkAddress = customerService.getCustomerByWorkAddress(selectedWorkOrder.getWorkAddress());
         if(!customerByWorkAddress.isEmpty() && customerByWorkAddress.get().size() > 1){
@@ -2370,6 +2668,20 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         selectProductSubView.setSelectedProductList(selectedWorkOrder.getProductList());
         addTabButton.setEnabled(true);
         updateFinishButtonVisibility();
+        updateHeaderSplitState();
+        updateMaterialSelectionButtonVisibility();
+    }
+
+    private boolean isHeaderValid() {
+
+        if (selectedWorkOrder == null
+                || workOrderBinder == null
+                || workOrderHeaderBinder == null) {
+            return false;
+        }
+
+        return workOrderBinder.isValid()
+                && workOrderHeaderBinder.isValid();
     }
 
     private void readNewWorkOrder() {
@@ -2399,7 +2711,18 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         product1.setTeamNumber(0);
         products.add(product1);
         newWorkOrder.setProductList(products);
+
         selectedWorkOrder = newWorkOrder;
+
+        newWorkOrderMode = true;
+
+        headerCollapsed = false;
+        sidebarCollapsed = true;
+
+        headerSplitLayout.setSplitterPosition(HEADER_POSITION_NEW);
+        slideButton.setVisible(false);
+        updateWorkOrderUiState();
+
         workOrderBinder.readBean(selectedWorkOrder);
         workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(0));
         selectProductSubView.setUserFunctionAndDocumentDate(UserFunction.TECHNICIAN, selectedWorkOrder.getWorkDateTime().toLocalDate());
@@ -2425,6 +2748,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         selectProductSubView.setSelectedProductList(selectedWorkOrder.getProductList());
         addTabButton.setEnabled(false);
         updateFinishButtonVisibility();
+        updateHeaderSplitState();
         saveWorkOrderButton.setVisible(true);
     }
 
@@ -2500,7 +2824,10 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             selectedWorkOrder.getLinkedWorkOrders().add(id);
             workOrderService.save(selectedWorkOrder);
         }
+
         selectedWorkOrder = newWorkOrder;
+        newWorkOrderMode = true;
+        headerSplitLayout.setSplitterPosition(HEADER_POSITION_NEW);
 
         Tab newTab = new Tab(selectedWorkOrder.getWorkDateTime().format(DateTimeFormatter.ofPattern("dd/MM")));
         newTab.getElement().setProperty("workOrderId", id);
@@ -2525,6 +2852,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(0).getWorkOrderTimeList());
         addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(0).getBowlEntityList());
         selectProductSubView.setSelectedProductList(selectedWorkOrder.getProductList());
+        updateHeaderSplitState();
     }
 
     private String saveSelectedWorkOrder() throws ValidationException {
@@ -2637,17 +2965,6 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                     setSelectedWorkOrder(workOrderService.getWorkOrderById(selectedTab.getElement().getProperty("workOrderId")).get());
                 }
             });
-
-//            //show save button and send to Proforma if selectedWorkOrder is not Finished
-//            if(!selectedWorkOrder.getWorkOrderStatus().equals(WorkOrderStatus.FINISHED)){
-//                finishButton.setVisible(true);
-//                saveWorkOrderButton.setVisible(true);
-//            }
-//            else{
-//                finishButton.setVisible(false);
-//                saveWorkOrderButton.setVisible(false);
-//            }
-
         }
         else{
             linkParameter = null;
@@ -2713,6 +3030,40 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         dialog.addCancelListener(e -> {
             action.cancel();
         });
+
+        dialog.open();
+    }
+
+    private void tryChangeTeam(int newTeam, Runnable changeAction) {
+
+        boolean workOrderValid =
+                workOrderBinder != null
+                        && workOrderBinder.validate().isOk();
+
+        boolean headerValid =
+                workOrderHeaderBinder != null
+                        && workOrderHeaderBinder.validate().isOk();
+
+        if (workOrderValid && headerValid) {
+            changeAction.run();
+            return;
+        }
+
+        ConfirmDialog dialog = new ConfirmDialog();
+
+        dialog.setHeader("Werkbon niet volledig ingevuld");
+
+        dialog.setText(
+                "De gegevens van het huidige team zijn nog niet volledig ingevuld. " +
+                        "Wil je toch naar een ander team gaan?"
+        );
+
+        dialog.setCancelText("Blijven");
+        dialog.setCancelable(true);
+
+        dialog.setConfirmText("Toch wisselen");
+
+        dialog.addConfirmListener(e -> changeAction.run());
 
         dialog.open();
     }

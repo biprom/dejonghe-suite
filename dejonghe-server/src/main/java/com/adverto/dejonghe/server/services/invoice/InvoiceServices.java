@@ -61,6 +61,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 @Service
 public class InvoiceServices {
@@ -297,40 +298,65 @@ public class InvoiceServices {
 
         List<Product> allProducts = new ArrayList<>();
 
-        //get comment of first WorkOrder and add it as comment
-        Set<String> addedComments = new HashSet<>();
-
         workOrderSet.forEach(workOrder -> {
             try {
 
-                String comment = workOrder.getWorkOrderHeaderList().stream()
-                        .map(WorkOrderHeader::getDescription)
-                        .filter(Objects::nonNull)
-                        .map(String::trim)
-                        .filter(s -> !s.isEmpty())
-                        .distinct()
-                        .collect(Collectors.joining(System.lineSeparator()));
+                Set<String> addedTitles = new HashSet<>();
+                Set<String> addedDescriptions = new HashSet<>();
 
-                if (comment != null && !comment.isBlank()) {
+                for (WorkOrderHeader header : workOrder.getWorkOrderHeaderList()) {
 
-                    // Alleen toevoegen als exact deze commentaar nog niet verwerkt is
-                    if (addedComments.add(comment)) {
+                    if (header == null) {
+                        continue;
+                    }
 
-                        List<String> commentRowList = splitText(comment, 90);
-                        Collections.reverse(commentRowList);
-                        for (String row : commentRowList) {
-                            Product newProduct = new Product();
-                            newProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
-                            newProduct.setInternalName(row);
-                            newProduct.setTeamNumber(0);
-                            newProduct.setBComment(true);
-                            allProducts.add(newProduct);
-                        }
+                    String title = header.getTitle() != null
+                            ? header.getTitle().trim()
+                            : "";
+
+                    String description = header.getDescription() != null
+                            ? header.getDescription().trim()
+                            : "";
+
+                    List<String> commentRowList = new ArrayList<>();
+
+                    boolean somethingAdded = false;
+
+                    // Titel alleen toevoegen als deze nog niet eerder voorkwam
+                    if (!title.isEmpty() && addedTitles.add(title)) {
+                        commentRowList.addAll(splitText(title, 90));
+                        somethingAdded = true;
+                    }
+
+                    // Description apart controleren
+                    if (!description.isEmpty() && addedDescriptions.add(description)) {
+                        commentRowList.addAll(splitText(description, 90));
+                        somethingAdded = true;
+                    }
+
+                    // Alleen lege regel toevoegen als er effectief iets toegevoegd werd (geen lege regel toevoegen)
+                    if (somethingAdded) {
+                        //commentRowList.add("");
+                    }
+
+                    for (String row : commentRowList) {
+
+                        Product newProduct = new Product();
+                        newProduct.setDate(
+                                workOrder.getWorkDateTime().toLocalDate()
+                        );
+                        newProduct.setInternalName(row);
+                        newProduct.setTeamNumber(0);
+                        newProduct.setBComment(true);
+
+                        allProducts.add(newProduct);
                     }
                 }
 
             } catch (Exception e) {
-                Notification.show("De starter bevat geen commentaar voor op de proforma!");
+                Notification.show(
+                        "De starter bevat geen commentaar voor op de proforma!"
+                );
             }
         });
 
@@ -932,6 +958,37 @@ public class InvoiceServices {
 //                emptyLine.setTeamNumber(0);
 //                emptyLine.setBComment(true);
 //                allProducts.add(emptyLine);
+
+            //generate Title per day
+            //place title first
+
+
+            try {
+
+                String tile = workOrder.getWorkOrderHeaderList().stream()
+                        .map(WorkOrderHeader::getTitle)
+                        .filter(Objects::nonNull)
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .distinct()
+                        .collect(Collectors.joining(System.lineSeparator()));
+
+                if (tile != null && !tile.isBlank()) {
+
+                    List<String> commentRowList = splitText(tile, 90);
+
+                    for (String row : commentRowList) {
+                        Product newProduct = new Product();
+                        newProduct.setDate(workOrder.getWorkDateTime().toLocalDate());
+                        newProduct.setInternalName(row);
+                        newProduct.setTeamNumber(0);
+                        newProduct.setBComment(true);
+                        allProducts.add(newProduct);
+                    }
+                }
+            } catch (Exception e) {
+                Notification.show("De starter bevat geen commentaar voor op de proforma!");
+            }
 
             //generate Comments/Products per day
             //place comment first

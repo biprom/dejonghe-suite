@@ -5,10 +5,13 @@ import com.adverto.dejonghe.common.dbservices.WorkOrderService;
 import com.adverto.dejonghe.common.entities.WorkOrder.*;
 import com.adverto.dejonghe.common.entities.customers.Address;
 import com.adverto.dejonghe.common.entities.customers.Customer;
+import com.adverto.dejonghe.common.entities.employee.Employee;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkLocation;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkType;
+import com.adverto.dejonghe.common.entities.product.product.Product;
 import com.adverto.dejonghe.common.implementations.ProductImplementation;
 import com.adverto.dejonghe.common.implementations.TeamImplementation;
+import com.adverto.dejonghe.common.implementations.TeamSummaryImplementation;
 import net.sf.jasperreports.engine.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
@@ -18,13 +21,20 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class WorkOrderPdfServices {
 
     private final CustomerService customerService;
+
+    @Value("${rootTemplateWorkorderResume}")
+    FileSystemResource workOrderResumeResourceJRXML;
+
     @Value("${rootTemplateWorkorder}")
     FileSystemResource workOrderResourceJRXML;
 
@@ -62,6 +72,8 @@ public class WorkOrderPdfServices {
     String roadTax4;
     String comment4;
     List<WorkOrderTimePdfDTO> workHourTime4;
+
+    List<TeamSummary> teamSummaryList = new ArrayList<>();
 
     byte[] invoiceBytes;
 
@@ -467,5 +479,198 @@ public class WorkOrderPdfServices {
             return workOrderTimePdfDTOList;
         }
         return null;
+    }
+
+    public String generateWorkOrderResumePDF(List<WorkOrder> workOrderList){
+
+        JasperReport jasperReport = null;
+        JasperPrint jasperPrint = null;
+
+        baosAttachement = new ByteArrayOutputStream();
+
+        DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+        parameters.clear();
+
+        try {
+            if((workOrderList.get(0).getWorkAddress() != null)){
+                parameters.put("workAddress", "Werfadres : " + "\n" +
+                        workOrderList.get(0).getWorkAddress().getAddressName() + "\n" +
+                        workOrderList.get(0).getWorkAddress().getStreet() + "\n" +
+                        workOrderList.get(0).getWorkAddress().getZip() + " " +
+                        workOrderList.get(0).getWorkAddress().getCity());
+            }
+        }
+        catch (Exception e){
+            parameters.put("workAddress", null);
+        }
+
+        try {
+            Optional<List<Customer>> optCustomer = customerService.getCustomerByWorkAddress(workOrderList.get(0).getWorkAddress());
+            if ((optCustomer.isPresent()) && (optCustomer.get().size() > 0)) {
+                Optional<Address> optAddress = optCustomer.get().get(0).getAddresses().stream().filter(x -> x.getInvoiceAddress()).findFirst();
+                if (optAddress.isPresent()) {
+                    parameters.put("customer", "Klant : " + "\n" +
+                            optCustomer.get().get(0).getName() + "\n" +
+                            optAddress.get().getStreet() + "\n" +
+                            optAddress.get().getZip() + " " +
+                            optAddress.get().getCity());
+                }
+                else{
+                    parameters.put("customer", null);
+                }
+            }
+        }
+        catch (Exception e){
+            parameters.put("workAddress", null);
+        }
+
+        TeamSummaryImplementation teamSummaryImplementation = new TeamSummaryImplementation(generateSummaryTeamList(workOrderList));
+        parameters.put( "TeamDataSource", teamSummaryImplementation);
+
+        parameters.put("showWorkHours", true);
+
+        List<Product> allSelectedProducts = workOrderList.stream()
+                .filter(Objects::nonNull)
+                .filter(workOrder -> workOrder.getProductList() != null)
+                .flatMap(workOrder -> workOrder.getProductList().stream())
+                .filter(Objects::nonNull)
+                .toList();
+
+        //Collections.reverse(allSelectedProducts);
+        ProductImplementation productImplementation = new ProductImplementation(allSelectedProducts);
+
+        parameters.put( "ItemDataSource", productImplementation);
+
+        try {
+            jasperReport = JasperCompileManager.compileReport( workOrderResumeResourceJRXML.getInputStream() );
+        } catch (JRException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+
+        }
+
+        try {
+            jasperPrint  = JasperFillManager.fillReport(jasperReport, parameters, new JREmptyDataSource(  ));
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+
+        String formatted = String.valueOf(workOrderList.get(0).getWorkDateTime().format(DateTimeFormatter.ofPattern("dd_MM_yyyy")) );
+        String exportName = rootFolder + ""+ formatted+".pdf";
+
+        try {
+            invoiceBytes = JasperExportManager.exportReportToPdf(jasperPrint);
+            Files.write(Paths.get(exportName), invoiceBytes);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        } catch (JRException e) {
+            throw new RuntimeException(e);
+        }
+
+        return ""+ formatted+".pdf";
+    }
+
+    private List<TeamSummary> generateSummaryTeamList(List<WorkOrder> workOrderList) {
+
+        teamSummaryList.clear();
+
+        List<TeamSummary> teamSummaryList = new ArrayList<>();
+
+        for (WorkOrder workOrder : workOrderList) {
+            if (workOrder.getMasterEmployeeTeam1() != null) {
+                teamSummaryList.add(createTeamSummary(
+                        workOrder.getMasterEmployeeTeam1(),
+                        workOrder.getExtraEmployeesTeam1(),
+                        workOrder.getWorkOrderHeaderList().get(0),
+                        workOrder.getWorkDateTime(),
+                        workOrder.getWorkLocation()
+                ));
+            }
+
+            if (workOrder.getMasterEmployeeTeam2() != null) {
+                teamSummaryList.add(createTeamSummary(
+                        workOrder.getMasterEmployeeTeam2(),
+                        workOrder.getExtraEmployeesTeam2(),
+                        workOrder.getWorkOrderHeaderList().get(1),
+                        workOrder.getWorkDateTime(),
+                        workOrder.getWorkLocation()
+                ));
+            }
+
+            if (workOrder.getMasterEmployeeTeam3() != null) {
+                teamSummaryList.add(createTeamSummary(
+                        workOrder.getMasterEmployeeTeam3(),
+                        workOrder.getExtraEmployeesTeam3(),
+                        workOrder.getWorkOrderHeaderList().get(2),
+                        workOrder.getWorkDateTime(),
+                        workOrder.getWorkLocation()
+                ));
+            }
+
+            if (workOrder.getMasterEmployeeTeam4() != null) {
+                teamSummaryList.add(createTeamSummary(
+                        workOrder.getMasterEmployeeTeam4(),
+                        workOrder.getExtraEmployeesTeam4(),
+                        workOrder.getWorkOrderHeaderList().get(3),
+                        workOrder.getWorkDateTime(),
+                        workOrder.getWorkLocation()
+                ));
+            }
+        }
+
+        return teamSummaryList;
+    }
+
+    private TeamSummary createTeamSummary(
+            Employee masterEmployee,
+            Set<Employee> extraEmployees,
+            WorkOrderHeader header,
+            LocalDateTime workOrderDate,
+            WorkLocation workLocation) {
+
+        TeamSummary summaryTeam = new TeamSummary();
+
+        // Techniekers
+        StringBuilder technicians = new StringBuilder();
+
+        technicians.append(masterEmployee.getAbbreviation()).append(" ");
+
+        if (extraEmployees != null) {
+            extraEmployees.stream()
+                    .filter(Objects::nonNull)
+                    .forEach(employee ->
+                            technicians.append(employee.getAbbreviation()).append(" ")
+                    );
+        }
+
+        // Vervoer
+        String transport = "Geen transport";
+
+        if (header.getFleet() != null) {
+            transport = header.getFleet().getDiscription();
+        }
+
+        // Wegentaks + tunneltaks
+        double roadTax =
+                Optional.ofNullable(header.getRoadTax()).orElse(0.0)
+                        + Optional.ofNullable(header.getTunnelTax()).orElse(0.0);
+
+        // Werkuren
+        List<WorkOrderTimePdfDTO> workHours = getWorkOrderTimeDtoFor(
+                header.getWorkOrderTimeList()
+        );
+
+        // TeamSummary invullen
+        summaryTeam.setLocation(workLocation.getDiscription());
+        summaryTeam.setDate(workOrderDate.toLocalDate()
+                .format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+        summaryTeam.setComment(header.getDescription());
+        summaryTeam.setTechnicians(technicians.toString().trim());
+        summaryTeam.setVihicle(transport);
+        summaryTeam.setRoadTunnelTax(String.valueOf(roadTax));
+        summaryTeam.setWorkHours(workHours);
+
+        return summaryTeam;
     }
 }

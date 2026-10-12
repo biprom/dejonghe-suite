@@ -1,6 +1,7 @@
 package com.adverto.dejonghe.server.views.workorder;
 
 import com.adverto.dejonghe.common.dbservices.*;
+import com.adverto.dejonghe.common.services.WorkOrderPdfServices;
 import com.adverto.dejonghe.server.customEvents.AddProductEventListener;
 import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.adverto.dejonghe.common.entities.WorkOrder.BowlEntity;
@@ -88,6 +89,7 @@ import java.util.stream.Collectors;
 public class WorkorderView extends VerticalLayout implements HasUrlParameter<String>, BeforeLeaveObserver {
 
     private final InvoiceService invoiceService;
+    private final WorkOrderPdfServices workOrderPdfServices;
     EmployeeService employeeService;
     CustomerService customerService;
     ProductService productService;
@@ -136,6 +138,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
     MultiSelectComboBox<Employee> cbExtraEmployees3 = new MultiSelectComboBox<>();
     MultiSelectComboBox<Employee> cbExtraEmployees4 = new MultiSelectComboBox<>();
 
+    TextField tfTitle = new TextField();
     TextArea taDiscription = new TextArea();
 
     Grid<WorkOrderTime>workOrderTimeGrid;
@@ -158,6 +161,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
     Button saveWorkOrderButton = new Button("Bewaar werkbon");
     Button finishButton = new Button("Stuur door facturatie");
+    Button summaryButton = new Button("Samenvatting");
 
     VerticalLayout vLayoutHeaderLevel2Tabs;
     VerticalLayout vLayoutHeaderLevel3Tabs;
@@ -250,7 +254,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                          ToolsSpyLaneView toolsSpyLaneView,
                          ToolsThicknessMeterView toolsThicknessMeterView,
                          ToolsWorkhoursView toolsWorkhoursView,
-                         ToolsFixedPriceView toolsFixedPriceView, InvoiceService invoiceService) {
+                         ToolsFixedPriceView toolsFixedPriceView, InvoiceService invoiceService, WorkOrderPdfServices workOrderPdfServices) {
         this.productService = productService;
         this.selectProductSubView = selectProductSubView;
         this.customerService = customerService;
@@ -277,6 +281,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         setUpRemoveWorkOrderHour();
         setUpRemoveBowlDialog();
         setUpFinishButton();
+        setUpSummaryButton();
         setUpSaveButton();
         setUpUpload();
         setUpShowImageButton();
@@ -308,7 +313,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         hLayout.add(dropEnabledUpload,showImageButton);
         HorizontalLayout horizontalLayout = new HorizontalLayout();
         horizontalLayout.setWidth("100%");
-        horizontalLayout.add(saveWorkOrderButton,finishButton);
+        horizontalLayout.add(saveWorkOrderButton,finishButton,summaryButton);
         vLayout.add(hLayout,horizontalLayout);
         headerSplitLayout.addToSecondary(vLayout);
         mainSplitLayout.addToPrimary(selectProductSubView.getLayout());
@@ -329,6 +334,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         this.setHeightFull();
         add(wrapper);
         this.invoiceService = invoiceService;
+        this.workOrderPdfServices = workOrderPdfServices;
     }
 
     private void setUpErrorDialog() {
@@ -1000,7 +1006,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
     }
 
     private void setUpFinishButton() {
-        finishButton.setWidth("50%");
+        finishButton.setWidth("30%");
         finishButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY,
                 ButtonVariant.LUMO_SUCCESS);
         finishButton.setVisible(false);
@@ -1009,8 +1015,20 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         });
     }
 
+    private void setUpSummaryButton() {
+        summaryButton.setWidth("30%");
+        summaryButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY,
+                ButtonVariant.LUMO_SUCCESS);
+        summaryButton.setVisible(false);
+        summaryButton.addClickListener(e -> {
+            UI.getCurrent()
+                    .getPage()
+                    .open("/pdf/workordersummary/" + selectedWorkOrder.getId(), "_blank");
+        });
+    }
+
     private void setUpSaveButton() {
-        saveWorkOrderButton.setWidth("50%");
+        saveWorkOrderButton.setWidth("30%");
         saveWorkOrderButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY,
                 ButtonVariant.LUMO_WARNING);
         saveWorkOrderButton.addClickListener(e -> {
@@ -1111,8 +1129,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         workOrderHeaderBinder.forField(typeComboBox)
                 .asRequired("Gelieve een werktype te selecteren!")
                 .bind(WorkOrderHeader::getWorkType, WorkOrderHeader::setWorkType);
+        workOrderHeaderBinder.forField(tfTitle)
+                .asRequired("Gelieve een titel in te geven!")
+                .withNullRepresentation("")
+                .bind(WorkOrderHeader::getTitle, WorkOrderHeader::setTitle);
         workOrderHeaderBinder.forField(taDiscription)
-                .asRequired("Gelieve een omschrijving in te geven!")
                 .withNullRepresentation("")
                 .bind(WorkOrderHeader::getDescription, WorkOrderHeader::setDescription);
         workOrderHeaderBinder.forField(fleetComboBox)
@@ -1266,10 +1287,16 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         if (selectedWorkOrder == null) {
             finishButton.setVisible(false);
+            summaryButton.setVisible(false);
             return;
         }
 
         finishButton.setVisible(
+                Boolean.TRUE.equals(selectedWorkOrder.getStarter())
+                        && isHeaderValid()
+        );
+
+        summaryButton.setVisible(
                 Boolean.TRUE.equals(selectedWorkOrder.getStarter())
                         && isHeaderValid()
         );
@@ -1628,10 +1655,16 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         level5VerticalLayout = new VerticalLayout();
         level5VerticalLayout.setWidth("100%");
         level5VerticalLayout.setPadding(false);
+
+        tfTitle.setLabel("Titel (wordt gekopieerd)");
+        tfTitle.setWidthFull();
+        tfTitle.setPlaceholder("Gelieve een duidelijke titel te geven betreffende de uitgevoerde werken");
+
+        taDiscription.setLabel("Omschrijving (wordt niet gekopieerd)");
         taDiscription.setWidthFull();
         taDiscription.setHeight("150px");
         taDiscription.setPlaceholder("Gelieve een duidelijke omschrijving te geven betreffende de uitgevoerde werken");
-        level5VerticalLayout.add(taDiscription);
+        level5VerticalLayout.add(tfTitle,taDiscription);
         return level5VerticalLayout;
     }
 
@@ -1833,6 +1866,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
             tryChangeTeam(2, () -> {
 
+                WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(1);
+                if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
+                    workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
+                }
+
                 workOrderHeaderBinder.readBean(
                         selectedWorkOrder.getWorkOrderHeaderList().get(1)
                 );
@@ -1900,6 +1938,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
             tryChangeTeam(3, () -> {
 
+                WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(2);
+                if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
+                    workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
+                }
+
                 workOrderHeaderBinder.readBean(
                         selectedWorkOrder.getWorkOrderHeaderList().get(2)
                 );
@@ -1964,6 +2007,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         homeIcon4.addClickListener(e -> {
 
             tryChangeTeam(4, () -> {
+
+                WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(3);
+                if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
+                    workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
+                }
 
                 workOrderHeaderBinder.readBean(
                         selectedWorkOrder.getWorkOrderHeaderList().get(3)
@@ -2153,6 +2201,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
                 activeTeams.add(2);
 
+                WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(1);
+                if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
+                    workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
+                }
+
                 workOrderHeaderBinder.readBean(
                         selectedWorkOrder.getWorkOrderHeaderList().get(1)
                 );
@@ -2221,6 +2274,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
                 activeTeams.add(3);
 
+                WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(2);
+                if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
+                    workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
+                }
+
                 workOrderHeaderBinder.readBean(
                         selectedWorkOrder.getWorkOrderHeaderList().get(2)
                 );
@@ -2287,6 +2345,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             tryChangeTeam(4, () -> {
 
                 activeTeams.add(4);
+
+                WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(3);
+                if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
+                    workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
+                }
 
                 workOrderHeaderBinder.readBean(
                         selectedWorkOrder.getWorkOrderHeaderList().get(3)
@@ -2764,22 +2827,17 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         WorkOrderHeader newWorkOrderHeader1 = new WorkOrderHeader();
 
-        String description = selectedWorkOrder
+        String tile = selectedWorkOrder
                 .getWorkOrderHeaderList()
                 .get(0)
-                .getDescription();
+                .getTitle();
 
-        if (description != null && !description.isBlank()) {
-            int index = description.indexOf('.');
+        if (tile != null && !tile.isBlank()) {
 
-            String firstSentence = index >= 0
-                    ? description.substring(0, index + 1).trim()
-                    : description.trim();
-
-            newWorkOrderHeader1.setDescription(firstSentence);
+            newWorkOrderHeader1.setTitle(tile);
         }
         else{
-            newWorkOrderHeader1.setDescription("");
+            newWorkOrderHeader1.setTitle("");
         }
 
         newWorkOrderHeader1.setWorkType(selectedWorkOrder.getWorkOrderHeaderList().get(0).getWorkType());
@@ -2835,6 +2893,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         buddyTab.setSelectedTab(newTab);
         addTabButton.setEnabled(false);
         finishButton.setVisible(false);
+        summaryButton.setVisible(false);
 
         workOrderBinder.readBean(selectedWorkOrder);
         workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(0));

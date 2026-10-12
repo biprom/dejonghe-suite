@@ -135,6 +135,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
     MultiSelectComboBox<Employee> cbExtraEmployees3 = new MultiSelectComboBox<>();
     MultiSelectComboBox<Employee> cbExtraEmployees4 = new MultiSelectComboBox<>();
 
+    TextField tfTitle = new TextField();
     TextArea taDiscription = new TextArea();
 
     Grid<WorkOrderTime>workOrderTimeGrid;
@@ -933,7 +934,6 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         finishWorkOrderDialog.addOpenedChangeListener(listener -> {
             errorList = workOrderServices.checkWorkOrderBeforeSendToInvoice(selectedWorkOrder, errorList);
             if(errorList.size() > 0){
-                //TODO check if it is a pickup or not -> workhours doesn't need to be filled in
                 if(!selectedWorkOrder.getWorkOrderHeaderList().get(0).getWorkType().equals(WorkType.PICKUP)){
                     errorDialogErrorsVerticalLayout.removeAll();
                     for(String error : errorList){
@@ -994,7 +994,6 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 Notification.show("Deze werkbon kon niet worden bewaard.");
             }
             UI.getCurrent().getPage().setLocation("/werkbon");
-
         });
         saveButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         return saveButton;
@@ -1112,8 +1111,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         workOrderHeaderBinder.forField(typeComboBox)
                 .asRequired("Gelieve een werktype te selecteren!")
                 .bind(WorkOrderHeader::getWorkType, WorkOrderHeader::setWorkType);
+        workOrderHeaderBinder.forField(tfTitle)
+                .asRequired("Gelieve een titel in te geven!")
+                .withNullRepresentation("")
+                .bind(WorkOrderHeader::getTitle, WorkOrderHeader::setTitle);
         workOrderHeaderBinder.forField(taDiscription)
-                .asRequired("Gelieve een omschrijving in te geven!")
                 .withNullRepresentation("")
                 .bind(WorkOrderHeader::getDescription, WorkOrderHeader::setDescription);
         workOrderHeaderBinder.forField(fleetComboBox)
@@ -1629,10 +1631,16 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         level5VerticalLayout = new VerticalLayout();
         level5VerticalLayout.setWidth("100%");
         level5VerticalLayout.setPadding(false);
+
+        tfTitle.setLabel("Titel (wordt gekopieerd)");
+        tfTitle.setWidthFull();
+        tfTitle.setPlaceholder("Gelieve een duidelijke titel te geven betreffende de uitgevoerde werken");
+
+        taDiscription.setLabel("Omschrijving (wordt niet gekopieerd)");
         taDiscription.setWidthFull();
         taDiscription.setHeight("150px");
         taDiscription.setPlaceholder("Gelieve een duidelijke omschrijving te geven betreffende de uitgevoerde werken");
-        level5VerticalLayout.add(taDiscription);
+        level5VerticalLayout.add(tfTitle,taDiscription);
         return level5VerticalLayout;
     }
 
@@ -1685,7 +1693,6 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                         tfFleetHours.setValue("0");
                         tfFleetHours.setEnabled(false);
                     } else {
-                        //TODO recalc amout of hours
                         tfFleetHours.setValue("");
                         calcFleetHoursAgain();
                         tfFleetHours.setPlaceholder(String.valueOf(proposalAmountHoursCrane));
@@ -1835,6 +1842,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
             tryChangeTeam(2, () -> {
 
+                WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(1);
+                if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
+                    workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
+                }
+
                 workOrderHeaderBinder.readBean(
                         selectedWorkOrder.getWorkOrderHeaderList().get(1)
                 );
@@ -1902,6 +1914,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
             tryChangeTeam(3, () -> {
 
+                WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(2);
+                if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
+                    workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
+                }
+
                 workOrderHeaderBinder.readBean(
                         selectedWorkOrder.getWorkOrderHeaderList().get(2)
                 );
@@ -1966,6 +1983,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         homeIcon4.addClickListener(e -> {
 
             tryChangeTeam(4, () -> {
+
+                WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(3);
+                if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
+                    workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
+                }
 
                 workOrderHeaderBinder.readBean(
                         selectedWorkOrder.getWorkOrderHeaderList().get(3)
@@ -2155,6 +2177,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
                 activeTeams.add(2);
 
+                WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(1);
+                if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
+                    workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
+                }
+
                 workOrderHeaderBinder.readBean(
                         selectedWorkOrder.getWorkOrderHeaderList().get(1)
                 );
@@ -2223,6 +2250,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
                 activeTeams.add(3);
 
+                WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(2);
+                if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
+                    workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
+                }
+
                 workOrderHeaderBinder.readBean(
                         selectedWorkOrder.getWorkOrderHeaderList().get(2)
                 );
@@ -2289,6 +2321,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             tryChangeTeam(4, () -> {
 
                 activeTeams.add(4);
+
+                WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(3);
+                if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
+                    workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
+                }
 
                 workOrderHeaderBinder.readBean(
                         selectedWorkOrder.getWorkOrderHeaderList().get(3)
@@ -2766,22 +2803,17 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         WorkOrderHeader newWorkOrderHeader1 = new WorkOrderHeader();
 
-        String description = selectedWorkOrder
+        String tile = selectedWorkOrder
                 .getWorkOrderHeaderList()
                 .get(0)
-                .getDescription();
+                .getTitle();
 
-        if (description != null && !description.isBlank()) {
-            int index = description.indexOf('.');
+        if (tile != null && !tile.isBlank()) {
 
-            String firstSentence = index >= 0
-                    ? description.substring(0, index + 1).trim()
-                    : description.trim();
-
-            newWorkOrderHeader1.setDescription(firstSentence);
+            newWorkOrderHeader1.setTitle(tile);
         }
         else{
-            newWorkOrderHeader1.setDescription("");
+            newWorkOrderHeader1.setTitle("");
         }
 
         newWorkOrderHeader1.setWorkType(selectedWorkOrder.getWorkOrderHeaderList().get(0).getWorkType());
@@ -2967,17 +2999,6 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                     setSelectedWorkOrder(workOrderService.getWorkOrderById(selectedTab.getElement().getProperty("workOrderId")).get());
                 }
             });
-
-//            //show save button and send to Proforma if selectedWorkOrder is not Finished
-//            if(!selectedWorkOrder.getWorkOrderStatus().equals(WorkOrderStatus.FINISHED)){
-//                finishButton.setVisible(true);
-//                saveWorkOrderButton.setVisible(true);
-//            }
-//            else{
-//                finishButton.setVisible(false);
-//                saveWorkOrderButton.setVisible(false);
-//            }
-
         }
         else{
             linkParameter = null;

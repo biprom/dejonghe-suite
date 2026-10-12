@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Optional;
 
 @RestController
@@ -37,7 +38,6 @@ public class PdfController {
 
     private String pdfNaam;
 
-    //for workorders
     @GetMapping("/pdf/workorder/{workOrderId}")
     public ResponseEntity<Resource> getWorkOrderPdf(
             @PathVariable String workOrderId) {
@@ -74,7 +74,42 @@ public class PdfController {
         }
     }
 
-    //for invoices
+    @GetMapping("/pdf/workordersummary/{workOrderId}")
+    public ResponseEntity<Resource> getWorkOrderSummaryPdf(
+            @PathVariable String workOrderId) {
+
+        List<WorkOrder> optionalWorkOrders =
+                workOrderService.getWorkOrderListByStarterId(workOrderId);
+
+        if (optionalWorkOrders.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        try {
+            String pdfNaam =
+                    workOrderPdfServices.generateWorkOrderResumePDF(optionalWorkOrders);
+
+            Path rootPath = Paths.get(rootFolder).toAbsolutePath().normalize();
+            Path pdfPath = rootPath.resolve(pdfNaam).normalize();
+
+            if (!pdfPath.startsWith(rootPath) || !Files.exists(pdfPath)) {
+                return ResponseEntity.notFound().build();
+            }
+
+            Resource resource = new InputStreamResource(Files.newInputStream(pdfPath));
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "inline; filename=\"" + pdfPath.getFileName() + "\"")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .contentLength(Files.size(pdfPath))
+                    .body(resource);
+
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
     @GetMapping("/pdf/invoice/{id}")
     public ResponseEntity<Resource> getPdf(@PathVariable String id) {
         try {

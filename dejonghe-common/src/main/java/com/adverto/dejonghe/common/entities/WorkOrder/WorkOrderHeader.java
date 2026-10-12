@@ -17,6 +17,7 @@ import java.util.List;
 @NoArgsConstructor
 public class WorkOrderHeader {
 
+    String title;
     String description;
 
     WorkType workType;

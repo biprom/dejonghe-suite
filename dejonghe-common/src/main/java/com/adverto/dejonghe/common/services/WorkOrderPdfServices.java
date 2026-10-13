@@ -26,6 +26,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class WorkOrderPdfServices {
@@ -209,43 +210,57 @@ public class WorkOrderPdfServices {
 
         List<WorkOrderHeader> headers = workOrder.getWorkOrderHeaderList();
 
-        String commentTeam1 = headers.size() > 0
+        String commentTeam1 = headers.size() > 0 && headers.get(0) != null
                 ? headers.get(0).getDescription()
                 : null;
 
-        String commentTeam2 = headers.size() > 1
+        String commentTeam2 = headers.size() > 1 && headers.get(1) != null
                 ? headers.get(1).getDescription()
                 : null;
 
-        String commentTeam3 = headers.size() > 2
+        String commentTeam3 = headers.size() > 2 && headers.get(2) != null
                 ? headers.get(2).getDescription()
                 : null;
 
-        String commentTeam4 = headers.size() > 3
+        String commentTeam4 = headers.size() > 3 && headers.get(3) != null
                 ? headers.get(3).getDescription()
                 : null;
 
+        String titleTeam1 = headers.size() > 0 && headers.get(0) != null
+                ? headers.get(0).getTitle()
+                : null;
 
-        boolean team2Same = Objects.equals(
-                normalizeComment(commentTeam2),
-                normalizeComment(commentTeam1)
-        );
+        String titleTeam2 = headers.size() > 1 && headers.get(1) != null
+                ? headers.get(1).getTitle()
+                : null;
 
-        boolean team3Same = Objects.equals(
-                normalizeComment(commentTeam3),
-                normalizeComment(commentTeam2)
-        );
+        String titleTeam3 = headers.size() > 2 && headers.get(2) != null
+                ? headers.get(2).getTitle()
+                : null;
 
-        boolean team4Same = Objects.equals(
-                normalizeComment(commentTeam4),
-                normalizeComment(commentTeam3)
-        );
+        String titleTeam4 = headers.size() > 3 && headers.get(3) != null
+                ? headers.get(3).getTitle()
+                : null;
 
 
-        parameters.put("commentTeam1", commentTeam1);
-        parameters.put("commentTeam2", team2Same ? "" : commentTeam2);
-        parameters.put("commentTeam3", team3Same ? "" : commentTeam3);
-        parameters.put("commentTeam4", team4Same ? "" : commentTeam4);
+// Titel en comment combineren
+        String textTeam1 = combineTitleAndComment(titleTeam1, commentTeam1);
+        String textTeam2 = combineTitleAndComment(titleTeam2, commentTeam2);
+        String textTeam3 = combineTitleAndComment(titleTeam3, commentTeam3);
+        String textTeam4 = combineTitleAndComment(titleTeam4, commentTeam4);
+
+
+// Volledige tekst vergelijken
+        boolean team2Same = textTeam2.equals(textTeam1);
+        boolean team3Same = textTeam3.equals(textTeam2);
+        boolean team4Same = textTeam4.equals(textTeam3);
+
+
+// Parameters voor Jaspersoft
+        parameters.put("commentTeam1", textTeam1);
+        parameters.put("commentTeam2", team2Same ? "" : textTeam2);
+        parameters.put("commentTeam3", team3Same ? "" : textTeam3);
+        parameters.put("commentTeam4", team4Same ? "" : textTeam4);
 
         TeamImplementation teamImplementation1 = new TeamImplementation(generateTeam1List(workOrder));
         parameters.put( "TeamDataSource1", teamImplementation1);
@@ -306,14 +321,13 @@ public class WorkOrderPdfServices {
         return ""+ formatted+".pdf";
     }
 
-    private String normalizeComment(String comment) {
-        if (comment == null) {
-            return null;
-        }
+    private String combineTitleAndComment(String title, String comment) {
 
-        return comment
-                .replaceAll("\\s+", " ")
-                .trim();
+        return Stream.of(title, comment)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.joining("\n"));
     }
 
     private List<Team> generateTeam1List(WorkOrder workOrder) {
@@ -665,7 +679,23 @@ public class WorkOrderPdfServices {
         summaryTeam.setLocation(workLocation.getDiscription());
         summaryTeam.setDate(workOrderDate.toLocalDate()
                 .format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
-        summaryTeam.setComment(header.getDescription());
+        String title = header.getTitle();
+        String description = header.getDescription();
+
+        String comment = "";
+
+        if (title != null && !title.isBlank()) {
+            comment = title;
+        }
+
+        if (description != null && !description.isBlank()) {
+            if (!comment.isEmpty()) {
+                comment += "\n";
+            }
+            comment += description;
+        }
+
+        summaryTeam.setComment(comment);
         summaryTeam.setTechnicians(technicians.toString().trim());
         summaryTeam.setVihicle(transport);
         summaryTeam.setRoadTunnelTax(String.valueOf(roadTax));

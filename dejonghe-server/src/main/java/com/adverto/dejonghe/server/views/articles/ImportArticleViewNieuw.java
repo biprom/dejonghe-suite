@@ -3,7 +3,6 @@ package com.adverto.dejonghe.server.views.articles;
 import com.adverto.dejonghe.common.dbservices.*;
 import com.adverto.dejonghe.common.entities.product.product.*;
 import com.adverto.dejonghe.common.services.SetService;
-import com.adverto.dejonghe.common.wizard.WIZARD;
 import com.adverto.dejonghe.server.views.subViews.*;
 import com.adverto.dejonghe.common.entities.enums.employee.UserFunction;
 import com.adverto.dejonghe.common.entities.product.enums.E_Product_Level;
@@ -39,9 +38,7 @@ import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.converter.StringToDoubleConverter;
 import com.vaadin.flow.data.provider.SortDirection;
 import com.vaadin.flow.router.*;
-import com.vaadin.flow.spring.annotation.SpringComponent;
 import org.apache.poi.ss.util.CellReference;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.vaadin.lineawesome.LineAwesomeIconUrl;
@@ -95,6 +92,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     private ShowImageSubVieuw showImageSubVieuw;
     private ShowPdfSubVieuw showPdfSubVieuw;
     private ShowLinkSubVieuw showLinkSubVieuw;
+    private AddWizardView addWizardView;
 
     private List<ProductLevel1>level1List;
     private List<ProductLevel2>level2List;
@@ -107,6 +105,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     private Dialog bulkDialog;
     private Dialog orderDialog;
     private Dialog configureSetDialog;
+    private Dialog addWizardDialog;
     private Dialog configureCoupledDialog;
     private Dialog newArticleDialog;
     private Dialog changeArticleDialog;
@@ -129,7 +128,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     private TextField tfComment;
     private TextField tfMoQ;
     private TextField tfUnit;
-    private ComboBox<WIZARD>cbWizard;
 
     private TextField tfPurchasePrice;
     private TextField tfSellMargin;
@@ -164,7 +162,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     Grid.Column commentColumn;
     Grid.Column moqColumn;
     Grid.Column unitColumn;
-    Grid.Column wizardColumn;
 
     Grid.Column<PurchasePrice> purchaseDateColumn;
 
@@ -206,6 +203,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                                   ProductLevel7Service productLevel7Service,
                                   SupplierService supplierService,
                                   SetView setView,
+                                  AddWizardView addWizardView,
                                   OrderSubView orderSubView,
                                   CoupledProductView coupledProductView,
                                   MoveView moveView,
@@ -241,6 +239,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         this.setViewSimple = setViewSimple;
         this.setService = setService;
         this.productServices = productServices;
+        this.addWizardView = addWizardView;
 
         addClassNames("master-detail-view");
 
@@ -288,6 +287,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         setUpProductLevelComboBoxes();
         setUpBulkDialog();
         setUpOrderDialog();
+        setUpWizardDialog();
         setUpConfigureSetDialog();
         setUpConfigureCoupledProductDialog();
         setUpCopyDialog();
@@ -511,6 +511,22 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
             if (!event.isOpened()) {
                 grid.deselectAll();
             }
+        });
+    }
+
+    private void setUpWizardDialog() {
+        addWizardDialog = new Dialog();
+        addWizardDialog.setWidth("90%");
+        addWizardDialog.setHeight("90%");
+        addWizardDialog.add(addWizardView);
+        Button cancelButton = new Button("Sluiten", e -> {
+            addWizardDialog.close();
+            refreshItemsInGrid();
+        });
+        addWizardDialog.getFooter().add(cancelButton);
+        addWizardDialog.addDialogCloseActionListener(event -> {
+            addWizardDialog.close();
+            refreshItemsInGrid();
         });
     }
 
@@ -1885,9 +1901,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 .withNullRepresentation("")
                 .bind(Product::getUnit, Product::setUnit);
         unitColumn.setEditorComponent(tfUnit);
-        productBinder.forField(cbWizard)
-                .bind(Product::getWizard, Product::setWizard);
-        wizardColumn.setEditorComponent(cbWizard);
 //        productBinder.forField(cbProductLevel1)
 //                        .bind(Product::getProductLevel1, Product::setProductLevel1);
 //        productBinder.forField(cbProductLevel2)
@@ -1953,89 +1966,105 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         grid.addClassName("no-large-cells");
         grid.setSelectionMode(Grid.SelectionMode.MULTI);
 
-        Grid.Column<Product> sortColumnPosNr = grid.addColumn(item -> {
-            if((item.getPositionNumber() != null) && (!item.getPositionNumber().isEmpty())){
-                try{
-                    return Integer.valueOf(item.getPositionNumber().split("[^0-9]")[0]);
-                }
-                catch (Exception e){
-                    return 4999;
-                }
-            }
-            else{
-                return 5000;
-            }
-        });
-        sortColumnPosNr.setVisible(false);
-        Grid.Column<Product> camColumn = grid.addComponentColumn(product -> {
-            if ((product.getImageList() != null) && (!product.getImageList().isEmpty())) {
-                Icon imageButton = new Icon(VaadinIcon.CAMERA);
-                imageButton.addClickListener(event -> {
-                    showImageSubVieuw.setUser(UserFunction.TECHNICIAN);
-                    showImageSubVieuw.setSelectedWorkOrder(product.getImageList());
-                    showImageSubVieuw.setTitle(product.getProductCode() + " " + product.getInternalName());
-                    showImageDialog.open();
-                });
-                return imageButton;
-            } else {
-                return new Span("");
-            }
-        }).setFlexGrow(0).setHeader(new Icon(VaadinIcon.CAMERA)).setTextAlign(ColumnTextAlign.CENTER);
-        camColumn.addClassName("center-header");
-        camColumn.setWidth("70px");
-
         Grid.Column<Product> OSGrid = grid.addComponentColumn(product -> {
-            if ((product.getSetElement() != null) && (product.getSetElement() == true)) {
-                Button elementButton = new Button("O");
-                elementButton.getStyle().set("color", "black");
-                elementButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
-                elementButton.addClickListener(event -> {
-                    selectedSetList.clear();
-                    Optional<List<Product>> allSets = productService.getAllSetsContaining(product);
-                    if (!allSets.isEmpty()) {
-                        selectedSetList.addAll(allSets.get());
-                        setViewSimple.setSelectedProduct(product);
-                        setViewSimpleDialog.open();
-                    }
-                });
-                return elementButton;
-            }
-            if ((product.getSet() != null) && (product.getSet() == true)) {
-                Button setButton = new Button("S");
-                setButton.getStyle().set("color", "black");
-                setButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
-                setButton.addClickListener(event -> {
-                    setViewSimple.setSelectedProduct(product);
-                    setViewSimpleDialog.open();
-                });
-                return setButton;
-            } else {
-                //Check if there are Copies
-                if((product.getProductCode() != null) && (!product.getProductCode().isEmpty())){
-                    Optional<List<Product>> byProductCodeEqualCaseInsensitive = productService.findByProductCodeEqualCaseInsensitive(product.getProductCode());
-                    if (byProductCodeEqualCaseInsensitive.isPresent()) {
-                        if(byProductCodeEqualCaseInsensitive.get() != null){
-                            long amountArticlesInSet = byProductCodeEqualCaseInsensitive.get().stream().filter(item -> (item.getSetElement() != null) &&(item.getSetElement() == true)).count();
-                            if(amountArticlesInSet > 0){
-                                Button setButton = new Button("C");
-                                setButton.getStyle().set("color", "black");
-                                setButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
-                                setButton.addClickListener(event -> {
-                                    selectedProduct = product;
-                                    setViewSimple.setSelectedProduct(product);
-                                    setViewSimpleDialog.open();
-                                });
-                                return setButton;
+
+                    HorizontalLayout layout = new HorizontalLayout();
+                    layout.setPadding(false);
+                    layout.setSpacing(false);
+                    layout.setAlignItems(FlexComponent.Alignment.CENTER);
+
+                    // O - SetElement
+                    if (Boolean.TRUE.equals(product.getSetElement())) {
+
+                        Button elementButton = new Button("O");
+                        elementButton.getStyle().set("color", "black");
+                        elementButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+
+                        elementButton.addClickListener(event -> {
+                            selectedSetList.clear();
+
+                            Optional<List<Product>> allSets =
+                                    productService.getAllSetsContaining(product);
+
+                            if (allSets.isPresent()) {
+                                selectedSetList.addAll(allSets.get());
+                                setViewSimple.setSelectedProduct(product);
+                                setViewSimpleDialog.open();
                             }
-                            else{
-                                return new Span("");
+                        });
+
+                        layout.add(elementButton);
+
+                    } else if (Boolean.TRUE.equals(product.getSet())) {
+
+                        // S - Set
+                        Button setButton = new Button("S");
+                        setButton.getStyle().set("color", "black");
+                        setButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+
+                        setButton.addClickListener(event -> {
+                            setViewSimple.setSelectedProduct(product);
+                            setViewSimpleDialog.open();
+                        });
+
+                        layout.add(setButton);
+
+                    } else {
+
+                        // C - Copies
+                        if (product.getProductCode() != null
+                                && !product.getProductCode().isEmpty()) {
+
+                            Optional<List<Product>> byProductCodeEqualCaseInsensitive =
+                                    productService.findByProductCodeEqualCaseInsensitive(
+                                            product.getProductCode()
+                                    );
+
+                            if (byProductCodeEqualCaseInsensitive.isPresent()) {
+
+                                long amountArticlesInSet =
+                                        byProductCodeEqualCaseInsensitive.get()
+                                                .stream()
+                                                .filter(item ->
+                                                        Boolean.TRUE.equals(item.getSetElement()))
+                                                .count();
+
+                                if (amountArticlesInSet > 0) {
+
+                                    Button copyButton = new Button("C");
+                                    copyButton.getStyle().set("color", "black");
+                                    copyButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+
+                                    copyButton.addClickListener(event -> {
+                                        selectedProduct = product;
+                                        setViewSimple.setSelectedProduct(product);
+                                        setViewSimpleDialog.open();
+                                    });
+
+                                    layout.add(copyButton);
+                                }
                             }
                         }
                     }
-                }
-                return new Span("");
-            }
-        }).setFlexGrow(0).setHeader(new Span("S/O/C")).setTextAlign(ColumnTextAlign.CENTER);
+
+                    // W - Wizard (onafhankelijk van S/O/C)
+                    if (product.getWizard() != null) {
+
+                        Button wizardButton = new Button("W");
+                        wizardButton.getStyle().set("color", "black");
+                        wizardButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+
+                        layout.add(wizardButton);
+                    }
+
+                    return layout;
+
+                }).setAutoWidth(true)
+                .setFlexGrow(0)
+                .setHeader(new Span("S/O/C/W"))
+                .setTextAlign(ColumnTextAlign.CENTER);
+
+        OSGrid.setWidth("100px");
         OSGrid.addClassName("center-header");
         OSGrid.getElement().getThemeList().add("no-min-width");
         OSGrid.setWidth("70px");
@@ -2166,14 +2195,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 return "";
             }
         }).setHeader("E/H.").setResizable(true).setWidth("80px").setFlexGrow(0).setFrozenToEnd(true);
-        wizardColumn = grid.addColumn(item -> {
-            if(item.getWizard() != null){
-                return item.getWizard().getDescription();
-            }
-            else{
-                return "";
-            }
-        }).setHeader("Wizard").setResizable(true).setWidth("190px").setFlexGrow(0).setFrozenToEnd(true);
 
         grid.setPartNameGenerator(product -> {
             return "industry";
@@ -2479,11 +2500,6 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         tfComment = new TextField("Commentaar");
         tfMoQ = new TextField("MoQ");
         tfUnit = new TextField("Eenheid");
-        cbWizard = new ComboBox<>();
-        cbWizard.setLabel("Wizard");
-        cbWizard.setItems(WIZARD.values());
-        cbWizard.setItemLabelGenerator(WIZARD::getDescription);
-        cbWizard.setClearButtonVisible(true);
         cbProductLevel1 = new ComboBox("");
         cbProductLevel1.setWidth("100%");
         cbProductLevel2 = new ComboBox("");
@@ -2610,6 +2626,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         actie.getElement().getClassList().add("menu-as-button");
         actie.getSubMenu().addItem("Bestel artikel", e -> orderProduct());
         actie.getSubMenu().addItem("Bewerk set", e -> openEditSet());
+        actie.getSubMenu().addItem("Koppel Wizard", e -> addWizard());
         actie.getSubMenu().addItem("Bewerk gekoppelde artikelen", e -> openEditCoupledProduct());
         actie.getSubMenu().addItem("Voeg toe", e -> changeProduct());
         actie.getSubMenu().addItem("Verplaats artikel", e -> moveProduct());
@@ -2665,6 +2682,11 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         else{
             Notification.show("Gelieve 1 artikel te selectern om te bestellen");
         }
+    }
+
+    private void addWizard() {
+        addWizardDialog.open();
+        addWizardView.setSelectedProductForWizard(selectedProduct);
     }
 
     private void openEditSet() {

@@ -1,5 +1,7 @@
 package com.adverto.dejonghe.server.views.subViews;
 
+import com.adverto.dejonghe.common.entities.customers.Address;
+import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkOrderStatus;
 import com.adverto.dejonghe.common.entities.product.product.Product;
 import com.adverto.dejonghe.server.customEvents.GetSelectedInvoiceEvent;
@@ -1017,7 +1019,7 @@ public class CurrentInvoiceSubView extends VerticalLayout {
 
             if(pdfPaths != null && pdfPaths.size() == 1){
                             //only invoice PDF
-                            String pdfUrl = "http://localhost:8080/pdf";
+                            String pdfUrl = "http://192.168.1.90:8080/pdf";
 
                             getUI().ifPresent(ui ->
                                     ui.getPage().executeJs("""
@@ -1065,8 +1067,17 @@ public class CurrentInvoiceSubView extends VerticalLayout {
                 );
             }
 
+            String email = getInvoiceEmail(item);
 
-            String ontvanger = "klant@email.be";
+            if (email.isBlank()) {
+                Notification.show(
+                        "Geen e-mailadres gevonden voor deze klant.",
+                        4000,
+                        Notification.Position.MIDDLE
+                );
+                return;
+            }
+
             String subject = "Herinnering factuur : " + item.getFinalInvoiceNumber();
             String body = """
                             Beste klant.
@@ -1077,7 +1088,7 @@ public class CurrentInvoiceSubView extends VerticalLayout {
                             
                             Alvast bedankt.
                             """;
-            String mailtoLink = "mailto:" + ontvanger +
+            String mailtoLink = "mailto:" + email +
                     "?subject=" + encode(subject) +
                     "&body=" + encode(body);
             getUI().ifPresent(ui -> ui.getPage().open(mailtoLink));
@@ -1085,6 +1096,47 @@ public class CurrentInvoiceSubView extends VerticalLayout {
             dataProvider.refreshAll();
         };
 
+    }
+
+    private String getInvoiceEmail(Invoice invoice) {
+
+        Customer customer = invoice.getCustomer();
+
+        if (customer == null) {
+            return "";
+        }
+
+        // Eerst zoeken in de klantgegevens van de factuur
+        String email = findInvoiceEmail(customer);
+
+        if (!email.isBlank()) {
+            return email;
+        }
+
+        // Geen e-mailadres? Klant opnieuw ophalen uit MongoDB
+        Optional<Customer> updatedCustomer = customerService
+                .findCustomerById(customer.getId());
+
+        if (updatedCustomer.get() != null) {
+            return findInvoiceEmail(updatedCustomer.get());
+        }
+
+        return "";
+    }
+
+    private String findInvoiceEmail(Customer customer) {
+
+        if (customer.getAddresses() == null) {
+            return "";
+        }
+
+        return customer.getAddresses().stream()
+                .filter(Objects::nonNull)
+                .filter(address -> Boolean.TRUE.equals(address.getInvoiceAddress()))
+                .map(Address::getInvoiceMail)
+                .filter(email -> email != null && !email.isBlank())
+                .findFirst()
+                .orElse("");
     }
 
     private String encode(String value) {

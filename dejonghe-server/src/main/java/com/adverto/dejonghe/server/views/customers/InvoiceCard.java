@@ -677,19 +677,34 @@ public class InvoiceCard extends Card {
         layout.add(new Span(invoiceAddress.getStreet()));
         layout.add(new Span(invoiceAddress.getZip() + " " + invoiceAddress.getCity()));
         layout.add(new Span("\u00A0"));
-        if((invoiceAddress.getContactList() != null)){
-            invoiceAddress.getContactList().stream().forEach(contact -> {
-                if((contact.getFirstName() != null) && (!contact.getFirstName().matches("N/A"))){
-                    String text = String.join(" - ",
-                            Stream.of(
-                                            safe(contact.getFirstName() + " " + contact.getLastName()),
-                                            safe(contact.getCellphone()),
-                                            safe(contact.getEmail())
-                                    )
-                                    .filter(s -> !s.trim().isEmpty())
-                                    .toList()
-                    );
+        if (invoiceAddress.getContactList() != null) {
 
+            invoiceAddress.getContactList().forEach(contact -> {
+
+                if (contact == null) {
+                    return;
+                }
+
+                String name = Stream.of(
+                                contact.getFirstName(),
+                                contact.getLastName()
+                        )
+                        .filter(s -> s != null && !s.isBlank())
+                        .filter(s -> !s.trim().equalsIgnoreCase("N/A"))
+                        .map(String::trim)
+                        .collect(Collectors.joining(" "));
+
+                String text = Stream.of(
+                                name,
+                                contact.getCellphone(),
+                                contact.getEmail()
+                        )
+                        .filter(s -> s != null && !s.isBlank())
+                        .filter(s -> !s.trim().equalsIgnoreCase("N/A"))
+                        .map(String::trim)
+                        .collect(Collectors.joining(" - "));
+
+                if (!text.isEmpty()) {
                     layout.add(new Span(text));
                 }
             });

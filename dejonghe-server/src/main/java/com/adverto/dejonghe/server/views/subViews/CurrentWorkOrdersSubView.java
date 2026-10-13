@@ -208,7 +208,7 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
                     .set("overflow", "hidden")
                     .set("text-overflow", "ellipsis");
             return span;
-        }).setHeader("Omschrijving");
+        }).setHeader("Titel-Omschrijving");
         columnSubject.setFlexGrow(7);
         columnSubject.setPartNameGenerator(item -> "ellipsis-column");
         Grid.Column<WorkOrder> columnResponsible = pendingWorkOrdersGrid.addColumn(workOrder -> getActiveMasterEmployees(workOrder)).setHeader("Verantwoordelijke").setFlexGrow(1);
@@ -358,21 +358,24 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
     }
 
     private String getWorkOrderDiscriptions(WorkOrder workOrder) {
-        String discription = "";
 
-        if(workOrder.getWorkOrderHeaderList().get(0).getDescription() != null){
-            discription = discription + workOrder.getWorkOrderHeaderList().get(0).getDescription() + "\n";
+        if (workOrder.getWorkOrderHeaderList() == null) {
+            return "";
         }
-        if(workOrder.getWorkOrderHeaderList().get(1).getDescription() != null){
-            discription = discription + workOrder.getWorkOrderHeaderList().get(1).getDescription() + "\n";
-        }
-        if(workOrder.getWorkOrderHeaderList().get(2).getDescription() != null){
-            discription = discription + workOrder.getWorkOrderHeaderList().get(2).getDescription() + "\n";
-        }
-        if(workOrder.getWorkOrderHeaderList().get(3).getDescription() != null){
-            discription = discription + workOrder.getWorkOrderHeaderList().get(3).getDescription() + "\n";
-        }
-        return discription;
+
+        return workOrder.getWorkOrderHeaderList().stream()
+                .filter(Objects::nonNull)
+                .map(header -> {
+                    String title = header.getTitle();
+
+                    if (title == null || title.isBlank()) {
+                        return header.getDescription();
+                    }
+
+                    return title;
+                })
+                .filter(text -> text != null && !text.isBlank())
+                .collect(Collectors.joining("\n"));
     }
 
     private String getActiveMasterEmployees(WorkOrder workOrder) {

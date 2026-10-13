@@ -18,6 +18,7 @@ import com.adverto.dejonghe.common.entities.enums.workorder.WorkOrderStatus;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkType;
 import com.adverto.dejonghe.common.entities.invoice.Invoice;
 import com.adverto.dejonghe.common.entities.product.product.Product;
+import com.adverto.dejonghe.common.services.WorkOrderPdfServices;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.customEvents.AddProductEventListener;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.customEvents.AddRemoveProductEvent;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.views.subViews.SelectProductSubView;
@@ -87,6 +88,7 @@ import java.util.stream.Collectors;
 public class WorkorderView extends VerticalLayout implements HasUrlParameter<String>, BeforeLeaveObserver {
 
     private final InvoiceService invoiceService;
+    private final WorkOrderPdfServices workOrderPdfServices;
     EmployeeService employeeService;
     CustomerService customerService;
     ProductService productService;
@@ -158,6 +160,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
     Button saveWorkOrderButton = new Button("Bewaar werkbon");
     Button finishButton = new Button("Stuur door facturatie");
+    Button summaryButton = new Button("Samenvatting");
 
     VerticalLayout vLayoutHeaderLevel2Tabs;
     VerticalLayout vLayoutHeaderLevel3Tabs;
@@ -250,7 +253,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                          ToolsSpyLaneView toolsSpyLaneView,
                          ToolsThicknessMeterView toolsThicknessMeterView,
                          ToolsWorkhoursView toolsWorkhoursView,
-                         ToolsFixedPriceView toolsFixedPriceView, InvoiceService invoiceService) {
+                         ToolsFixedPriceView toolsFixedPriceView, InvoiceService invoiceService, WorkOrderPdfServices workOrderPdfServices) {
         this.productService = productService;
         this.selectProductSubView = selectProductSubView;
         this.customerService = customerService;
@@ -277,6 +280,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         setUpRemoveWorkOrderHour();
         setUpRemoveBowlDialog();
         setUpFinishButton();
+        setUpSummaryButton();
         setUpSaveButton();
         setUpUpload();
         setUpShowImageButton();
@@ -308,7 +312,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         hLayout.add(dropEnabledUpload,showImageButton);
         HorizontalLayout horizontalLayout = new HorizontalLayout();
         horizontalLayout.setWidth("100%");
-        horizontalLayout.add(saveWorkOrderButton,finishButton);
+        horizontalLayout.add(saveWorkOrderButton,finishButton,summaryButton);
         vLayout.add(hLayout,horizontalLayout);
         headerSplitLayout.addToSecondary(vLayout);
         mainSplitLayout.addToPrimary(selectProductSubView.getLayout());
@@ -329,6 +333,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         this.setHeightFull();
         add(wrapper);
         this.invoiceService = invoiceService;
+        this.workOrderPdfServices = workOrderPdfServices;
     }
 
     private void setUpErrorDialog() {
@@ -1000,7 +1005,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
     }
 
     private void setUpFinishButton() {
-        finishButton.setWidth("50%");
+        finishButton.setWidth("30%");
         finishButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY,
                 ButtonVariant.LUMO_SUCCESS);
         finishButton.setVisible(false);
@@ -1009,8 +1014,20 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         });
     }
 
+    private void setUpSummaryButton() {
+        summaryButton.setWidth("30%");
+        summaryButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY,
+                ButtonVariant.LUMO_SUCCESS);
+        summaryButton.setVisible(false);
+        summaryButton.addClickListener(e -> {
+            UI.getCurrent()
+                    .getPage()
+                    .open("/pdf/workordersummary/" + selectedWorkOrder.getId(), "_blank");
+        });
+    }
+
     private void setUpSaveButton() {
-        saveWorkOrderButton.setWidth("50%");
+        saveWorkOrderButton.setWidth("30%");
         saveWorkOrderButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY,
                 ButtonVariant.LUMO_WARNING);
         saveWorkOrderButton.addClickListener(e -> {
@@ -1269,10 +1286,16 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         if (selectedWorkOrder == null) {
             finishButton.setVisible(false);
+            summaryButton.setVisible(false);
             return;
         }
 
         finishButton.setVisible(
+                Boolean.TRUE.equals(selectedWorkOrder.getStarter())
+                        && isHeaderValid()
+        );
+
+        summaryButton.setVisible(
                 Boolean.TRUE.equals(selectedWorkOrder.getStarter())
                         && isHeaderValid()
         );
@@ -2869,6 +2892,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         buddyTab.setSelectedTab(newTab);
         addTabButton.setEnabled(false);
         finishButton.setVisible(false);
+        summaryButton.setVisible(false);
 
         workOrderBinder.readBean(selectedWorkOrder);
         workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(0));

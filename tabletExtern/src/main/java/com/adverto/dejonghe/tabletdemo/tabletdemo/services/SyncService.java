@@ -14,6 +14,7 @@ import com.mongodb.client.gridfs.GridFSBucket;
 import com.mongodb.client.gridfs.GridFSFindIterable;
 import com.mongodb.client.gridfs.model.GridFSFile;
 import com.mongodb.client.gridfs.model.GridFSUploadOptions;
+import com.mongodb.client.model.Filters;
 import lombok.RequiredArgsConstructor;
 import org.bson.BsonObjectId;
 import org.bson.Document;
@@ -203,29 +204,69 @@ public class SyncService {
 
     //send workOrders to server
     public void sendWorkOrders() throws IOException {
-        Optional<List<WorkOrder>> allWorkOrders = workOrderService.getAllFinished();
-        if(allWorkOrders.isPresent() && allWorkOrders.get().size() > 0) {
-            String url =
-                    "http://192.168.1.90:8080/api/workOrderToServer";
 
-            ResponseEntity<WorkOrder[]> response =
-                    restTemplate.postForEntity(
-                            url,
-                            allWorkOrders.get(),
-                            WorkOrder[].class
-                    );
+        Optional<List<WorkOrder>> allWorkOrders =
+                workOrderService.getAllFinished();
 
-            List<WorkOrder> saved =
-                    Arrays.asList(response.getBody());
+        if (allWorkOrders.isEmpty() || allWorkOrders.get().isEmpty()) {
+            return;
+        }
 
-            //send all images from the WorkOrders to the server
-            for(WorkOrder workOrder : saved){
-                if(workOrder.getImageList() != null && workOrder.getImageList().size() > 0){
-                    for(String id : workOrder.getImageList()){
-                        uploadDocumentToServer(id,getDocumentBytes(id));
+        String url = "http://192.168.1.90:8080/api/workOrderToServer";
+
+        ResponseEntity<WorkOrder[]> response =
+                restTemplate.postForEntity(
+                        url,
+                        allWorkOrders.get(),
+                        WorkOrder[].class
+                );
+
+        WorkOrder[] saved = response.getBody();
+
+        if (saved == null) {
+            return;
+        }
+
+        for (WorkOrder workOrder : saved) {
+
+            boolean allImagesUploaded = true;
+
+            if (workOrder.getImageList() != null) {
+
+                for (String id : workOrder.getImageList()) {
+
+                    byte[] bytes = getDocumentBytes(id);
+
+                    if (bytes == null) {
+                        System.err.println(
+                                "Foto ontbreekt bij werkbon "
+                                        + workOrder.getId() + ": " + id
+                        );
+
+                        allImagesUploaded = false;
+                        continue;
+                    }
+
+                    try {
+                        uploadDocumentToServer(id, bytes);
+                    } catch (Exception e) {
+                        System.err.println(
+                                "Upload mislukt voor foto: " + id
+                        );
+
+                        allImagesUploaded = false;
+                        e.printStackTrace();
                     }
                 }
+            }
+
+            if (allImagesUploaded) {
                 workOrderService.delete(workOrder);
+            } else {
+                System.err.println(
+                        "Werkbon " + workOrder.getId()
+                                + " blijft lokaal bewaard wegens ontbrekende foto's."
+                );
             }
         }
     }
@@ -269,18 +310,36 @@ public class SyncService {
         );
     }
 
-    public byte[] getDocumentBytes(String id)
-            throws IOException {
+    public byte[] getDocumentBytes(String id) {
 
-        ByteArrayOutputStream outputStream =
-                new ByteArrayOutputStream();
+        if (id == null || !ObjectId.isValid(id)) {
+            System.err.println("Ongeldige foto ID: " + id);
+            return null;
+        }
 
-        localGridFSBucket.downloadToStream(
-                new ObjectId(id),
-                outputStream
-        );
+        ObjectId objectId = new ObjectId(id);
 
-        return outputStream.toByteArray();
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+
+            // Controleren of bestand lokaal bestaat
+            GridFSFile file = localGridFSBucket
+                    .find(Filters.eq("_id", objectId))
+                    .first();
+
+            if (file == null) {
+                System.err.println("Foto niet gevonden in lokale GridFS: " + id);
+                return null;
+            }
+
+            localGridFSBucket.downloadToStream(objectId, outputStream);
+
+            return outputStream.toByteArray();
+
+        } catch (Exception e) {
+            System.err.println("Fout bij ophalen foto: " + id);
+            e.printStackTrace();
+            return null;
+        }
     }
 
 

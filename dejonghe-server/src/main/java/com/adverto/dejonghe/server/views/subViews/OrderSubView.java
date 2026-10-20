@@ -44,6 +44,7 @@ public class OrderSubView extends VerticalLayout {
     ComboBox<ORDER_PRODUCT_STATUS> orderComboBox;
     TextField tfSelectedAmount;
     ComboBox<Employee>cbEmployee;
+    TextField tfOrderComment;
 
     Button saveButton;
 
@@ -74,6 +75,7 @@ public class OrderSubView extends VerticalLayout {
                 order.setSelectedAmount(Double.valueOf(tfSelectedAmount.getValue()));
                 order.setStatus(orderComboBox.getValue());
                 order.setEmployee(cbEmployee.getValue());
+                order.setOrderComment(tfOrderComment.getValue());
                 order.setComment(selectedProductToOrder.getComment());
                 order.setInternalName(selectedProductToOrder.getInternalName());
                 order.setAbbreviation(selectedProductToOrder.getAbbreviation());
@@ -105,6 +107,8 @@ public class OrderSubView extends VerticalLayout {
         datePicker = new DatePicker();
         orderComboBox = new ComboBox<>();
         tfSelectedAmount = new TextField();
+        tfOrderComment = new TextField("Commentaar bestelling");
+        tfOrderComment.setWidth("100%");
         cbEmployee = new ComboBox<>();
 
         datePicker.setAriaLabel("Besteldatum");
@@ -155,6 +159,9 @@ public class OrderSubView extends VerticalLayout {
         orderBinder.forField(orderComboBox)
                 .bind(Order::getStatus, Order::setStatus);
 
+        orderBinder.forField(tfOrderComment)
+                .bind(Order::getOrderComment, Order::setOrderComment);
+
         orderBinder.forField(tfSelectedAmount)
                 .asRequired("Mag niet leeg zijn")
                 .withNullRepresentation("0.0")
@@ -182,6 +189,7 @@ public class OrderSubView extends VerticalLayout {
         verticalLayout.add(orderComboBox);
         verticalLayout.add(tfSelectedAmount);
         verticalLayout.add(cbEmployee);
+        verticalLayout.add(tfOrderComment);
         verticalLayout.add(saveButton);
 
         return verticalLayout;

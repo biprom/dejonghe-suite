@@ -1621,6 +1621,7 @@ public class InvoiceServices {
         try {
             if((invoice.getProjectWorkAddress() != null)){
                 parameters.put("werfAdres", "Werfadres : " + "\n" +
+                        invoice.getProjectWorkAddress().getAddressName() + "\n" +
                         invoice.getProjectWorkAddress().getStreet() + "\n" +
                         invoice.getProjectWorkAddress().getZip() + " " +
                         invoice.getProjectWorkAddress().getCity());
@@ -1762,22 +1763,22 @@ public class InvoiceServices {
                                 .filter(i -> (products.get(i).getBWorkHour()) && (products.get(i).getDateToShowOnInvoice() != null) && (products.get(i).getDateToShowOnInvoice().matches(uniqueDate.format(COMPAREDFORMATTER))))
                                 .reduce((first, second) -> first);
 
-                OptionalInt indexCommentOpt =
-                        IntStream.range(0, products.size())
-                            .filter(i -> products.get(i).getBComment() != null)
-                            .filter(i -> (products.get(i).getBComment()) && (products.get(i).getDateToShowOnInvoice() != null) && (products.get(i).getDateToShowOnInvoice().matches(uniqueDate.format(COMPAREDFORMATTER))))
-                            .reduce((first, second) -> second);
+                OptionalInt indexZeroOpt = IntStream.range(0, products.size())
+                        .filter(i -> "0".equals(products.get(i).getPositionNumber()))
+                        .findFirst();
 
+                OptionalInt indexCommentOpt = IntStream.range(0, products.size())
+                        .filter(i -> Boolean.TRUE.equals(products.get(i).getBComment()))
+                        .findFirst();
 
-                if (indexWorkHoursOpt.isPresent()) {
-                    int index = indexWorkHoursOpt.getAsInt();
-                    products.add(index - 0, pointerProduct);
+                if (indexZeroOpt.isPresent()) {
+                    products.add(indexZeroOpt.getAsInt() + 1, pointerProduct);
+
                 } else if (indexCommentOpt.isPresent()) {
-                    int index = indexCommentOpt.getAsInt();
-                    products.add(index + 1, pointerProduct);
-                }
-                else{
-                    products.add( pointerProduct);
+                    products.add(indexCommentOpt.getAsInt() + 1, pointerProduct);
+
+                } else {
+                    products.add(pointerProduct);
                 }
 
             }

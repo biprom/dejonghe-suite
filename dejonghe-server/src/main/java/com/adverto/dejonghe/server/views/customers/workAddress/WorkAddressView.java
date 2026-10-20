@@ -39,8 +39,6 @@ public class WorkAddressView extends VerticalLayout implements BeforeEnterObserv
 
     VerticalLayout layout;
 
-    Optional<List<WorkOrder>>allStartersByWorkAddressName;
-
 
     public WorkAddressView(DeviceService deviceService,
                            CustomerService customerService,
@@ -172,13 +170,11 @@ public class WorkAddressView extends VerticalLayout implements BeforeEnterObserv
     }
 
     private void loadData(){
-        allStartersByWorkAddressName = workOrderService.getAllWorkOrdersByaddressNameandNoEmptyImageList(selectedWorkAddress.getAddressName(), true);
-        if(allStartersByWorkAddressName.isPresent()){
-            this.workImageCard.setData(allStartersByWorkAddressName);
-        }
-        else{
-            Notification notification = Notification.show("Geen werkbonnen gevonden onder dit werfadres");
-            notification.addThemeVariants(NotificationVariant.LUMO_WARNING);
-        }
+        this.workImageCard.setData(
+                Optional.of(selectedWorkAddress),
+                address -> {
+                    customerService.save(selectedCustomer);
+                }
+        );
     }
 }

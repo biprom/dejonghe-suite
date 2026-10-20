@@ -165,7 +165,8 @@ public class DashboardView extends VerticalLayout {
         xLabelStyle.setFontSize("14px");
 
         xLabels.setStyle(xLabelStyle);
-
+        xLabels.setAlign(HorizontalAlign.LEFT);
+        xLabels.setX(3);
         xAxis.setLabels(xLabels);
 
         xAxis.setTickInterval(3600 * 1000);

@@ -299,3 +299,9 @@ vaadin-split-layout.header-split-locked::part(splitter) {
     cursor: not-allowed;
     opacity: 0.35;
 }
+
+vaadin-grid.document-grid::part(body-cell) {
+    white-space: normal;
+    height: auto;
+    align-content: center;
+}

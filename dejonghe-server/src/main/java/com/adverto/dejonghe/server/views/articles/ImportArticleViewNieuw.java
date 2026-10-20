@@ -667,14 +667,15 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                     notification.close();
                     if(productsForGrid != null){
                         //when filter is selected
-                        productListToShowInGrid.remove(grid.getSelectedItems());
+                        productListToShowInGrid.removeAll(grid.getSelectedItems());
                         productService.deleteSelecteditems(grid.getSelectedItems());
                         grid.setItems(productListToShowInGrid);
                         Notification.show("Artikel is verwijderd");
+                        //
                     }
                     else{
                         //when filter is not touched
-                        productListToShowInGrid.remove(grid.getSelectedItems());
+                        productListToShowInGrid.removeAll(grid.getSelectedItems());
                         productService.deleteSelecteditems(grid.getSelectedItems());
                         grid.setItems(productListToShowInGrid);
                         Notification.show("Artikel is verwijderd");
@@ -2068,6 +2069,19 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         OSGrid.addClassName("center-header");
         OSGrid.getElement().getThemeList().add("no-min-width");
         OSGrid.setWidth("70px");
+
+        Grid.Column<Product> imageColumn = grid.addComponentColumn(product -> {
+            if ((product.getImageList() != null) && (!product.getImageList().isEmpty())) {
+                Icon imageButton = new Icon(VaadinIcon.CAMERA);
+                imageButton.addClickListener(event -> {
+                    showImageSubVieuw.setUser(UserFunction.ADMIN);
+                    showImageSubVieuw.setSelectedWorkOrder(product.getPdfList());
+                    showImageSubVieuw.setTitle(product.getProductCode() + " " + product.getInternalName());
+                    showImageDialog.open();
+                });
+                return imageButton;
+            } else return new Span("");
+        }).setFlexGrow(0).setHeader(new Icon(VaadinIcon.CAMERA)).setTextAlign(ColumnTextAlign.CENTER);
 
         Grid.Column<Product> pdfColumn = grid.addComponentColumn(product -> {
             if ((product.getPdfList() != null) && (!product.getPdfList().isEmpty())) {

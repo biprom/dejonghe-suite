@@ -573,19 +573,21 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             timeUpPicker.setStep(Duration.ofMinutes(15));
             timeUpPicker.setWidth("100%");
             timeUpPicker.addValueChangeListener(event -> {
-                try {
-                    item.setTimeUp(timeUpPicker.getValue());
-                    workOrderTimeGrid.getDataProvider().refreshAll();
-                    selectedWorkOrder.getWorkOrderHeaderList().get(selectedTeam - 1).setWorkOrderTimeList(selectedWorkOrderTimes);
-                    saveSelectedWorkOrder();
-                } catch (ValidationException e) {
-                    throw new RuntimeException(e);
+
+                if (!event.isFromClient()) return;
+
+                item.setTimeUp(event.getValue());
+
+                if (!isValidTimeOrder(item)) {
+                    item.setTimeUp(event.getOldValue());
+                    timeUpPicker.setValue(event.getOldValue());
+
+                    Notification.show("Vertrek mag niet na de andere tijdstippen liggen!")
+                            .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                    return;
                 }
-                try {
-                    workOrderBinder.writeBean(selectedWorkOrder);
-                } catch (ValidationException e) {
-                    throw new RuntimeException(e);
-                }
+
+                saveWorkOrderTime();
             });
             return timeUpPicker;
         }).setHeader("Vertrek");
@@ -607,19 +609,21 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
             });
             timeStartPicker.addValueChangeListener(event -> {
-                try {
-                    item.setTimeStart(timeStartPicker.getValue());
-                    workOrderTimeGrid.getDataProvider().refreshAll();
-                    selectedWorkOrder.getWorkOrderHeaderList().get(selectedTeam-1).setWorkOrderTimeList(selectedWorkOrderTimes);
-                    saveSelectedWorkOrder();
-                } catch (ValidationException e) {
-                    throw new RuntimeException(e);
+
+                if (!event.isFromClient()) return;
+
+                item.setTimeStart(event.getValue());
+
+                if (!isValidTimeOrder(item)) {
+                    item.setTimeStart(event.getOldValue());
+                    timeStartPicker.setValue(event.getOldValue());
+
+                    Notification.show("Start werk moet tussen vertrek en stop liggen!")
+                            .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                    return;
                 }
-                try {
-                    workOrderBinder.writeBean(selectedWorkOrder);
-                } catch (ValidationException e) {
-                    throw new RuntimeException(e);
-                }
+
+                saveWorkOrderTime();
             });
             return timeStartPicker;
         }).setHeader("Start werk");
@@ -663,28 +667,21 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 timeStopPicker.setMin(timeStartPicker.getValue());
             });
             timeStopPicker.addValueChangeListener(event -> {
-                if (timeStopPicker.getValue() != null
-                        && !timeStopPicker.getValue().isBefore(timeStartPicker.getValue())) {
-                    try {
-                        item.setTimeStop(timeStopPicker.getValue());
-                        //timeDownPicker.setMin(timeStopPicker.getValue());
-                        workOrderTimeGrid.getDataProvider().refreshAll();
-                        selectedWorkOrder.getWorkOrderHeaderList().get(selectedTeam-1).setWorkOrderTimeList(selectedWorkOrderTimes);
-                        saveSelectedWorkOrder();
-                    } catch (ValidationException e) {
-                        throw new RuntimeException(e);
-                    }
-                    try {
-                        workOrderBinder.writeBean(selectedWorkOrder);
-                    } catch (ValidationException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-                else{
-                    timeStopPicker.setValue(timeStartPicker.getValue());
-                    Notification.show("De stop tijd mag niet voor de start tijd liggen!").addThemeVariants(NotificationVariant.LUMO_ERROR);
+
+                if (!event.isFromClient()) return;
+
+                item.setTimeStop(event.getValue());
+
+                if (!isValidTimeOrder(item)) {
+                    item.setTimeStop(event.getOldValue());
+                    timeStopPicker.setValue(event.getOldValue());
+
+                    Notification.show("Stop werk mag niet voor start of na terug liggen!")
+                            .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                    return;
                 }
 
+                saveWorkOrderTime();
             });
             return timeStopPicker;
         }).setHeader("Stop werk");
@@ -699,35 +696,35 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 timeDownPicker.setMin(timeStopPicker.getValue());
             });
             timeDownPicker.addValueChangeListener(event -> {
-                if (timeDownPicker.getValue() != null
-                        && !timeDownPicker.getValue().isBefore(timeUpPicker.getValue())) {
-                    try {
-                        item.setTimeDown(timeDownPicker.getValue());
-                        selectedWorkOrder.getWorkOrderHeaderList().get(selectedTeam-1).setWorkOrderTimeList(selectedWorkOrderTimes);
-                        try{
-                            Duration duration = Duration.between(item.getTimeUp(), item.getTimeDown());
-                            long hours = duration.toHours();
-                            long minutes = duration.toMinutes() % 60; // Minuten zonder de uren
-                            proposalAmountHoursCrane = hours + minutes / 60.0;
-                            tfFleetHours.setPlaceholder(String.valueOf(proposalAmountHoursCrane));
-                        }
-                        catch (Exception e){
-                        }
-                        saveSelectedWorkOrder();
-                    } catch (ValidationException e) {
-                        throw new RuntimeException(e);
-                    }
-                    try {
-                        workOrderBinder.writeBean(selectedWorkOrder);
-                    } catch (ValidationException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-                else{
-                    timeDownPicker.setValue(timeUpPicker.getValue());
-                    Notification.show("De terug tijd mag niet voor de vertrek tijd liggen!").addThemeVariants(NotificationVariant.LUMO_ERROR);
+
+                if (!event.isFromClient()) return;
+
+                item.setTimeDown(event.getValue());
+
+                if (!isValidTimeOrder(item)) {
+                    item.setTimeDown(event.getOldValue());
+                    timeDownPicker.setValue(event.getOldValue());
+
+                    Notification.show("Terug mag niet voor stop werk liggen!")
+                            .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                    return;
                 }
 
+                if (item.getTimeUp() != null && item.getTimeDown() != null) {
+
+                    Duration duration = Duration.between(
+                            item.getTimeUp(),
+                            item.getTimeDown()
+                    );
+
+                    proposalAmountHoursCrane = duration.toMinutes() / 60.0;
+
+                    tfFleetHours.setPlaceholder(
+                            String.valueOf(proposalAmountHoursCrane)
+                    );
+                }
+
+                saveWorkOrderTime();
             });
             return timeDownPicker;
         }).setHeader("Terug");
@@ -780,6 +777,48 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             });
             return plusButton;
         }).setFlexGrow(0);
+    }
+
+    private boolean isValidTimeOrder(WorkOrderTime item) {
+
+        LocalTime up = item.getTimeUp();
+        LocalTime start = item.getTimeStart();
+        LocalTime stop = item.getTimeStop();
+        LocalTime down = item.getTimeDown();
+
+        if (up != null && start != null && start.isBefore(up)) {
+            return false;
+        }
+
+        if (start != null && stop != null && stop.isBefore(start)) {
+            return false;
+        }
+
+        if (stop != null && down != null && down.isBefore(stop)) {
+            return false;
+        }
+
+        if (up != null && down != null && down.isBefore(up)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private void saveWorkOrderTime() {
+
+        try {
+            selectedWorkOrder.getWorkOrderHeaderList()
+                    .get(selectedTeam - 1)
+                    .setWorkOrderTimeList(selectedWorkOrderTimes);
+
+            saveSelectedWorkOrder();
+
+            workOrderBinder.writeBean(selectedWorkOrder);
+
+        } catch (ValidationException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void setUpCurrentWorkOrderDialog() {
@@ -2155,6 +2194,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 horizontalLayout3.setClassName("");
                 horizontalLayout4.setClassName("");
             });
+
         });
 
         cbExtraEmployees1.setWidth("100%");

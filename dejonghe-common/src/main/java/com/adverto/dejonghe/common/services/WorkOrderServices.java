@@ -168,8 +168,8 @@ public class WorkOrderServices {
                 }
             }
         }
-        if(workOrderHeader.getDescription() == null){
-            errorList.add(teamNumber + " :  Omschrijving is niet ingevuld!");
+        if(workOrderHeader.getTitle() == null){
+            errorList.add(teamNumber + " :  Titel is niet ingevuld!");
         }
 
         if(workLocation.equals(WorkLocation.ON_THE_MOVE)){

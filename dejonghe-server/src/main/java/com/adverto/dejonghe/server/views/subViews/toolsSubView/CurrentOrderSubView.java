@@ -172,6 +172,7 @@ public class CurrentOrderSubView extends VerticalLayout {
             return order.getOrderCode();
         }).setHeader("Code").setFlexGrow(1).setSortable(true);
         Grid.Column<Order> columnComment = orderGrid.addColumn(order -> order.getComment()).setHeader("Commentaar").setFlexGrow(2);
+        orderGrid.addColumn(order -> order.getOrderComment()).setHeader("Opm").setFlexGrow(2);
         Grid.Column<Order> columnOrderDate = orderGrid.addColumn(invoice -> invoice.getDate().format(DateTimeFormatter.ofPattern("dd-MM-yyyy"))).setHeader("Aanvraag").setFlexGrow(1);
         Grid.Column<Order> nameColumn = orderGrid.addColumn(order -> {
             if(order.getEmployee().getAbbreviation() != null){

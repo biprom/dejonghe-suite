@@ -1,12 +1,14 @@
 package com.adverto.dejonghe.tabletdemo.tabletdemo.views.dashboard;
 
 import com.adverto.dejonghe.common.dbservices.EmployeeService;
+import com.adverto.dejonghe.common.dbservices.InvoiceService;
 import com.adverto.dejonghe.common.dbservices.WorkOrderService;
 import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrder;
 import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrderGantSeriesItem;
 import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrderTime;
 import com.adverto.dejonghe.common.entities.employee.Employee;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkOrderStatus;
+import com.adverto.dejonghe.common.entities.invoice.Invoice;
 import com.adverto.dejonghe.tabletdemo.tabletdemo.customEvents.GetSelectedWorkOrderEvent;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.charts.Chart;
@@ -41,6 +43,7 @@ import java.util.stream.Collectors;
 @Route("dashboard")
 public class DashboardView extends VerticalLayout {
 
+    private final InvoiceService invoiceService;
     WorkOrderService workOrderService;
     ApplicationEventPublisher eventPublisher;
     EmployeeService employeeService;
@@ -75,12 +78,13 @@ public class DashboardView extends VerticalLayout {
     public DashboardView(WorkOrderService workOrderService,
                          ApplicationEventPublisher eventPublisher,
                          EmployeeService employeeService,
-                         DashboardDateState dashboardDateState) {
+                         DashboardDateState dashboardDateState, InvoiceService invoiceService) {
 
         this.eventPublisher = eventPublisher;
         this.workOrderService = workOrderService;
         this.employeeService = employeeService;
         this.dashboardDateState = dashboardDateState;
+        this.invoiceService = invoiceService;
 
         selectedStartDate = dashboardDateState.getStartDate();
         selectedEndDate = dashboardDateState.getEndDate();
@@ -152,10 +156,6 @@ public class DashboardView extends VerticalLayout {
         });
 
 
-        // =========================================================
-        // JOUW BESTAANDE CHART CODE
-        // =========================================================
-
         XAxis xAxis = configuration.getxAxis();
 
         Labels xLabels = new Labels();
@@ -163,7 +163,8 @@ public class DashboardView extends VerticalLayout {
         Style xLabelStyle = new Style();
         xLabelStyle.setFontWeight(FontWeight.BOLD);
         xLabelStyle.setFontSize("14px");
-
+        xLabels.setAlign(HorizontalAlign.LEFT);
+        xLabels.setX(3);
         xLabels.setStyle(xLabelStyle);
 
         xAxis.setLabels(xLabels);
@@ -357,12 +358,12 @@ public class DashboardView extends VerticalLayout {
             Button openButtonnew = new Button("Open Werkbon");
             openButtonnew.setWidth("100%");
             Optional<WorkOrder> selectedWorkOrder = workOrderService.getWorkOrderById(customData.getId());
-            if(selectedWorkOrder.get().getWorkOrderStatus().equals(WorkOrderStatus.RUNNING)){
-                openButtonnew.setVisible(true);
-            }
-            else{
-                openButtonnew.setVisible(false);
-            }
+
+            Optional<Invoice> invoiceWithWorkOrderId =
+                    invoiceService.getInvoiceWithWorkOrderId(selectedWorkOrder.get().getId());
+
+            openButtonnew.setVisible(invoiceWithWorkOrderId.isEmpty());
+
             openButtonnew.addClickListener(e -> {
                 if(selectedWorkOrder.isPresent()) {
                     eventPublisher.publishEvent(new GetSelectedWorkOrderEvent(this, selectedWorkOrder.get()));
@@ -385,11 +386,6 @@ public class DashboardView extends VerticalLayout {
         styleChart.setFontSize("26px");
 
         chartConf.setStyle(styleChart);
-
-
-        // =========================================================
-        // TOOLBAR
-        // =========================================================
 
         Button previousDay = new Button(
                 "◀",
@@ -457,9 +453,6 @@ public class DashboardView extends VerticalLayout {
                 day
         );
 
-        /*
-         * Voorkomt dat setValue() opnieuw de listeners uitvoert.
-         */
         updatingDatePickers = true;
 
         updatingDatePickers = true;

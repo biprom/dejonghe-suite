@@ -33,6 +33,7 @@ public class Order implements Serializable {
     private String positionNumber;
     private String unit;
     private String comment;
+    private String orderComment;
     private ProductLevel1 productLevel1;
     private ProductLevel2 productLevel2;
     private ProductLevel3 productLevel3;

@@ -348,6 +348,9 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
             else{
                 Notification.show("Synchronisatie wordt continu uitgevoerd");
             }
+
+            UI.getCurrent().getPage().reload();
+
         });
         logo.setHeight("100px");
 

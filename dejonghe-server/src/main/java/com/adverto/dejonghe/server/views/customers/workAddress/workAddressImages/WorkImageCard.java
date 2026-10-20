@@ -1,38 +1,48 @@
 package com.adverto.dejonghe.server.views.customers.workAddress.workAddressImages;
 
-import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrder;
+import com.adverto.dejonghe.common.entities.customers.Address;
 import com.adverto.dejonghe.common.entities.enums.employee.UserFunction;
-import com.adverto.dejonghe.server.views.subViews.CurrentWorkOrdersSubView;
+import com.adverto.dejonghe.server.views.subViews.CurrentDocumentSubView;
+import com.vaadin.flow.component.ClickEvent;
+import com.vaadin.flow.component.ComponentEventListener;
 import com.vaadin.flow.component.Text;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.card.Card;
 import com.vaadin.flow.component.card.CardVariant;
+import com.vaadin.flow.component.contextmenu.MenuItem;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.menubar.MenuBar;
+import com.vaadin.flow.component.menubar.MenuBarVariant;
+import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
+import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
+import java.util.function.Consumer;
 
-import java.util.List;
 import java.util.Optional;
 
 @Component
 @Scope("prototype")
 public class WorkImageCard extends Card {
 
-    private final CurrentWorkOrdersSubView currentWorkOrdersSubView;
+    private final CurrentDocumentSubView currentDocumentSubView;
 
-    private Boolean containsImages = Boolean.FALSE;
+    private Boolean containsDocuments = Boolean.FALSE;
 
     private final Dialog workOrdersDialog = new Dialog();
 
-    @Autowired
-    public WorkImageCard(CurrentWorkOrdersSubView currentWorkOrdersSubView) {
+    private MenuBar actionBar;
 
-        this.currentWorkOrdersSubView = currentWorkOrdersSubView;
+
+    @Autowired
+    public WorkImageCard(CurrentDocumentSubView currentDocumentSubView) {
+
+        this.currentDocumentSubView = currentDocumentSubView;
 
         this.getStyle().set("background-color", "#fbf6ea");
 
@@ -48,7 +58,7 @@ public class WorkImageCard extends Card {
         workOrdersDialog.setCloseOnEsc(true);
         workOrdersDialog.setCloseOnOutsideClick(true);
 
-        Div dialogTitle = new Div(new Text("Foto's werkbonnen"));
+        Div dialogTitle = new Div(new Text("Documenten"));
         dialogTitle.getStyle()
                 .set("font-size", "22px")
                 .set("font-weight", "600");
@@ -71,10 +81,10 @@ public class WorkImageCard extends Card {
 
         workOrdersDialog.getHeader().add(header);
 
-        currentWorkOrdersSubView.setWidthFull();
-        currentWorkOrdersSubView.setHeightFull();
+        currentDocumentSubView.setWidthFull();
+        currentDocumentSubView.setHeightFull();
 
-        workOrdersDialog.add(currentWorkOrdersSubView);
+        workOrdersDialog.add(currentDocumentSubView);
     }
 
     private void setUpThisCard() {
@@ -89,7 +99,7 @@ public class WorkImageCard extends Card {
 
         HorizontalLayout horizontalLayout = new HorizontalLayout();
 
-        Div title = new Div(new Text("Foto's"));
+        Div title = new Div(new Text("Documenten"));
         title.addClassName("card-title");
 
         title.getStyle()
@@ -100,61 +110,110 @@ public class WorkImageCard extends Card {
         horizontalLayout.add(title);
 
         this.setTitle(horizontalLayout);
+
+    }
+
+    private HorizontalLayout getActionMenu() {
+
+        HorizontalLayout actionBarLayout =
+                new HorizontalLayout();
+
+        actionBarLayout.setWidthFull();
+
+        VerticalLayout actionVLayout =
+                new VerticalLayout();
+
+        actionVLayout.setWidth("30%");
+
+        actionVLayout.setAlignItems(
+                FlexComponent.Alignment.CENTER
+        );
+
+        actionBar = new MenuBar();
+
+        actionBar.addClassName("large-menubar");
+
+        actionBar.addThemeVariants(
+                MenuBarVariant.LUMO_DROPDOWN_INDICATORS
+        );
+
+        MenuItem actie =
+                actionBar.addItem("Actie");
+
+        actie.getElement()
+                .getClassList()
+                .add("menu-as-button");
+
+        actie.getSubMenu()
+                .addItem(
+                        "Open documenten",
+                        openDevices()
+                );
+
+        actionVLayout.add(actionBar);
+
+        VerticalLayout layout =
+                new VerticalLayout();
+
+        actionBarLayout.addToStart(layout);
+        actionBarLayout.addToEnd(actionVLayout);
+
+        return actionBarLayout;
+    }
+
+    private ComponentEventListener<ClickEvent<MenuItem>> openDevices() {
+        return event -> openDialog();
     }
 
     private Div checkIfThereAreImages() {
 
         Div subtitle;
 
-        if (containsImages) {
+        if (containsDocuments) {
             subtitle = new Div(
-                    new Text("Dit werfadres bevat foto's")
+                    new Text("Dit werfadres bevat documenten")
             );
         } else {
             subtitle = new Div(
-                    new Text("Dit werfadres bevat geen foto's")
+                    new Text("Dit werfadres bevat geen documenten")
             );
         }
 
         subtitle.getStyle()
                 .set("font-size", "20px");
 
-        if (containsImages) {
 
-            subtitle.getStyle()
-                    .set("cursor", "pointer")
-                    .set("text-decoration", "underline");
+        subtitle.getStyle()
+                .set("cursor", "pointer")
+                .set("text-decoration", "underline");
 
-            subtitle.addSingleClickListener(event -> openDialog());
-        }
+        subtitle.addSingleClickListener(event -> openDialog());
+
 
         return subtitle;
     }
 
     private void openDialog() {
 
-        if (!containsImages) {
-            return;
-        }
-
         workOrdersDialog.open();
     }
 
     public void setData(
-            Optional<List<WorkOrder>> allStartersByWorkAddressName
-    ) {
+            Optional<Address> workAddress,
+            Consumer<Address> saveHandler) {
 
-        List<WorkOrder> workOrders =
-                allStartersByWorkAddressName.orElse(List.of());
+        currentDocumentSubView.setSaveHandler(saveHandler);
 
-        currentWorkOrdersSubView
-                .addItemsToPendingWorkOrderGrid(workOrders);
+        currentDocumentSubView.addItemsToGrid(workAddress);
 
-        currentWorkOrdersSubView
-                .setAuthorisation(UserFunction.ADMIN);
+        currentDocumentSubView.setAuthorisation(UserFunction.ADMIN);
 
-        containsImages = !workOrders.isEmpty();
+        containsDocuments = workAddress
+                .map(Address::getCoupledDocumentBundle)
+                .filter(documents -> !documents.isEmpty())
+                .isPresent();
 
         this.add(checkIfThereAreImages());
+        this.add(getActionMenu());
     }
 }

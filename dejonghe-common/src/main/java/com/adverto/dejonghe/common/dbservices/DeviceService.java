@@ -24,6 +24,4 @@ public class DeviceService {
     public void deleteById(String id) {
         deviceRepo.deleteById(id);
     }
-
-
 }

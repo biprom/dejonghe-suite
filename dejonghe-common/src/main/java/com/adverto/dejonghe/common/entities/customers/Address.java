@@ -1,5 +1,6 @@
 package com.adverto.dejonghe.common.entities.customers;
 
+import com.adverto.dejonghe.common.entities.images.DocumentBundle;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -29,8 +30,7 @@ public class Address implements Cloneable {
     private Double roadTaxActros;
     private Double roadTaxArocs;
     private List<String> coupledDeviceList;
-    private List<String> coupledImages;
-    private List<String> coupledDocuments;
+    private List<DocumentBundle> coupledDocumentBundle;
 
     @Override
     public Address clone() {

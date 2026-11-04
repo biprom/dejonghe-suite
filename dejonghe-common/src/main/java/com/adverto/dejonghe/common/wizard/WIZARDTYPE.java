@@ -1,12 +1,13 @@
 package com.adverto.dejonghe.common.wizard;
 
-public enum WIZARD {
+public enum WIZARDTYPE {
 
-    RVS_PLATE("RVS-Plaat wizard");
+    PLATE("Plaat wizard"),
+    PROFILE("Profiel wizard");
 
     private final String description;
 
-    WIZARD(String description) {
+    WIZARDTYPE(String description) {
         this.description = description;
     }
 

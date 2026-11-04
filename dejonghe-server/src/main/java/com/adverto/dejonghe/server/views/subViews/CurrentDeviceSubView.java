@@ -1,3 +1,4 @@
+
 package com.adverto.dejonghe.server.views.subViews;
 
 import com.adverto.dejonghe.common.dbservices.CustomerService;
@@ -5,6 +6,9 @@ import com.adverto.dejonghe.common.dbservices.DeviceService;
 import com.adverto.dejonghe.common.entities.customers.Address;
 import com.adverto.dejonghe.common.entities.customers.Customer;
 import com.adverto.dejonghe.common.entities.installation.Device;
+import com.adverto.dejonghe.common.entities.images.DocumentBundle;
+import com.adverto.dejonghe.common.services.DocumentFileStorageService;
+import com.adverto.dejonghe.common.services.DocumentFileStorageService.StoredFile;
 import com.adverto.dejonghe.common.entities.invoice.Invoice;
 import com.adverto.dejonghe.common.services.ProductServices;
 import com.adverto.dejonghe.server.views.workorder.FinishedWorkorderView;
@@ -20,6 +24,9 @@ import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.*;
 import com.vaadin.flow.component.grid.editor.Editor;
 import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.html.Image;
+import com.vaadin.flow.component.html.IFrame;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.menubar.MenuBar;
@@ -33,6 +40,8 @@ import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationException;
 import com.vaadin.flow.data.provider.ListDataProvider;
 import com.vaadin.flow.router.QueryParameters;
+import com.vaadin.flow.server.streams.DownloadHandler;
+import com.vaadin.flow.server.streams.DownloadResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
@@ -54,6 +63,13 @@ public class CurrentDeviceSubView extends VerticalLayout {
     private final ProductServices productServices;
     private final CustomerService customerService;
     DeviceService deviceService;
+    private final DocumentFileStorageService documentStorage;
+    private final Map<String, Optional<StoredFile>> documentInfoCache = new HashMap<>();
+
+    private record DeviceFileEntry(DocumentBundle bundle, StoredFile file) {}
+
+    private Grid.Column<Device> cameraColumn;
+    private Grid.Column<Device> documentsColumn;
 
     Grid<Device> deviceGrid;
     HeaderRow headerRow;
@@ -105,11 +121,13 @@ public class CurrentDeviceSubView extends VerticalLayout {
     @Autowired
     public CurrentDeviceSubView(DeviceService deviceService,
                                 ProductServices productServices,
-                                CustomerService customerService)
+                                CustomerService customerService,
+                                DocumentFileStorageService documentStorage)
     {
         this.deviceService = deviceService;
         this.productServices = productServices;
         this.customerService = customerService;
+        this.documentStorage = documentStorage;
 
         setUpfilters();
         createReportDelete();
@@ -329,30 +347,22 @@ public class CurrentDeviceSubView extends VerticalLayout {
         deviceGrid.setSelectionMode(Grid.SelectionMode.MULTI);
         deviceGrid.addClassName("my-bold-footer");
         deviceGrid.appendFooterRow();
-        Grid.Column<Device> camColumn = deviceGrid.addComponentColumn(product -> {
-            if ((product.getCoupledImages() != null) && (!product.getCoupledImages().isEmpty())) {
-                Icon imageButton = new Icon(VaadinIcon.CAMERA);
-                imageButton.addClickListener(event -> {
-                });
-                return imageButton;
-            } else {
-                return new Span("");
-            }
-        }).setFlexGrow(0).setHeader(new Icon(VaadinIcon.CAMERA)).setTextAlign(ColumnTextAlign.CENTER);
-        camColumn.addClassName("center-header");
-        camColumn.setWidth("70px");
+        cameraColumn = deviceGrid.addComponentColumn(device ->
+                        createFilesButton(device, true))
+                .setFlexGrow(0)
+                .setHeader(new Icon(VaadinIcon.CAMERA))
+                .setTextAlign(ColumnTextAlign.CENTER);
+        cameraColumn.addClassName("center-header");
+        cameraColumn.setWidth("70px");
 
-        Grid.Column<Device> pdfColumn = deviceGrid.addComponentColumn(product -> {
-            if ((product.getCoupledDocuments() != null) && (!product.getCoupledDocuments().isEmpty())) {
-                Icon pdfButton = new Icon(VaadinIcon.FILE_FONT);
-                pdfButton.addClickListener(event -> {
-                });
-                return pdfButton;
-            } else return new Span("");
-        }).setFlexGrow(0).setHeader(new Icon(VaadinIcon.FILE_FONT)).setTextAlign(ColumnTextAlign.CENTER);
-        pdfColumn.addClassName("center-header");
-        pdfColumn.getElement().getThemeList().add("no-min-width");
-        pdfColumn.setWidth("70px");
+        documentsColumn = deviceGrid.addComponentColumn(device ->
+                        createFilesButton(device, false))
+                .setFlexGrow(0)
+                .setHeader(new Icon(VaadinIcon.FILE_FONT))
+                .setTextAlign(ColumnTextAlign.CENTER);
+        documentsColumn.addClassName("center-header");
+        documentsColumn.getElement().getThemeList().add("no-min-width");
+        documentsColumn.setWidth("70px");
 
         columnType = deviceGrid.addColumn(device -> {
             if(device.getType() != null){
@@ -421,7 +431,14 @@ public class CurrentDeviceSubView extends VerticalLayout {
         deviceGrid.sort(GridSortOrder.desc(columnType).build());
 
         deviceGrid.addItemClickListener(event -> {
+
+            if (event.getColumn() == cameraColumn ||
+                    event.getColumn() == documentsColumn) {
+                return;
+            }
+
             selectedDevice = event.getItem();
+
             editor.cancel();
             editor.editItem(event.getItem());
         });
@@ -442,6 +459,141 @@ public class CurrentDeviceSubView extends VerticalLayout {
         deviceGrid.addThemeVariants(GridVariant.LUMO_COMPACT);
 
         return deviceGrid;
+    }
+
+    // =====================================================
+    // DOCUMENTBUNDELS VAN HET GESELECTEERDE ADRES
+    // De Device zelf bevat geen gekoppelde foto-/document-ID's meer.
+    // =====================================================
+
+    private List<DeviceFileEntry> filesForDevice(Device device, boolean images) {
+        if (device == null || device.getId() == null
+                || selectedWorkAddress == null
+                || selectedWorkAddress.getCoupledDocumentBundle() == null) {
+            return List.of();
+        }
+
+        return selectedWorkAddress.getCoupledDocumentBundle().stream()
+                .filter(Objects::nonNull)
+                .filter(bundle -> bundle.getIdMachine() != null
+                        && bundle.getIdMachine().contains(device.getId()))
+                .filter(bundle -> bundle.getIdDocumentList() != null)
+                .flatMap(bundle -> bundle.getIdDocumentList().stream()
+                        .filter(Objects::nonNull)
+                        .map(fileId -> documentInfoCache.computeIfAbsent(
+                                fileId, documentStorage::getInfo))
+                        .flatMap(Optional::stream)
+                        .filter(file -> file.isImage() == images)
+                        .map(file -> new DeviceFileEntry(bundle, file)))
+                .toList();
+    }
+
+    private com.vaadin.flow.component.Component createFilesButton(
+            Device device, boolean images) {
+        List<DeviceFileEntry> entries = filesForDevice(device, images);
+        if (entries.isEmpty()) {
+            return new Span("");
+        }
+
+        Button button = new Button(images
+                ? VaadinIcon.CAMERA.create()
+                : VaadinIcon.FILE_FONT.create());
+        button.addThemeVariants(LUMO_TERTIARY_INLINE);
+        button.getElement().setAttribute("title",
+                images ? "Foto's bekijken" : "Documenten bekijken");
+        button.getElement().setAttribute("aria-label",
+                images ? "Foto's bekijken" : "Documenten bekijken");
+        button.addClickListener(event -> openDeviceFiles(device, images));
+        return button;
+    }
+
+    private void openDeviceFiles(Device device, boolean images) {
+        // Opnieuw ophalen: bundels kunnen sinds het tekenen van de Grid veranderd zijn.
+        List<DeviceFileEntry> entries = new ArrayList<>(filesForDevice(device, images));
+        if (entries.isEmpty()) {
+            Notification.show("Geen bestanden gevonden.");
+            return;
+        }
+
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle(images ? "Foto's van toestel" : "Documenten van toestel");
+        dialog.setWidth("90vw");
+        dialog.setHeight("90vh");
+
+        Span filename = new Span();
+        Span counter = new Span();
+        VerticalLayout preview = new VerticalLayout();
+        preview.setSizeFull();
+        preview.setPadding(false);
+        preview.setAlignItems(Alignment.CENTER);
+        preview.getStyle().set("overflow", "auto");
+
+        Button previous = new Button(VaadinIcon.ARROW_LEFT.create());
+        Button next = new Button(VaadinIcon.ARROW_RIGHT.create());
+        Button close = new Button("Sluiten", event -> dialog.close());
+        int[] position = {0};
+
+        Runnable updatePreview = () -> {
+            DeviceFileEntry entry = entries.get(position[0]);
+            StoredFile file = entry.file();
+            filename.setText(file.filename());
+            counter.setText((position[0] + 1) + " / " + entries.size());
+            previous.setEnabled(position[0] > 0);
+            next.setEnabled(position[0] < entries.size() - 1);
+            preview.removeAll();
+
+            if (file.isImage()) {
+                Image image = new Image(downloadHandler(file), file.filename());
+                image.setMaxWidth("100%");
+                image.setMaxHeight("70vh");
+                preview.add(image);
+            } else if (file.isPdf()) {
+                IFrame pdf = new IFrame(downloadHandler(file));
+                pdf.setWidthFull();
+                pdf.setHeight("70vh");
+                preview.add(pdf);
+            } else {
+                preview.add(new Span(
+                        "Dit bestandstype kan niet rechtstreeks worden weergegeven."));
+            }
+
+            preview.add(new Anchor(downloadHandler(file), "Bestand downloaden"));
+        };
+
+        previous.addClickListener(event -> {
+            position[0]--;
+            updatePreview.run();
+        });
+        next.addClickListener(event -> {
+            position[0]++;
+            updatePreview.run();
+        });
+
+        HorizontalLayout controls = new HorizontalLayout(
+                previous, counter, next, close);
+        controls.setAlignItems(Alignment.CENTER);
+        HorizontalLayout heading = new HorizontalLayout(filename, controls);
+        heading.setWidthFull();
+        heading.setAlignItems(Alignment.CENTER);
+        heading.expand(filename);
+        VerticalLayout layout = new VerticalLayout(heading, preview);
+        layout.setSizeFull();
+        layout.setPadding(false);
+        dialog.add(layout);
+        updatePreview.run();
+        dialog.open();
+    }
+
+    private DownloadHandler downloadHandler(StoredFile file) {
+        return DownloadHandler.fromInputStream(event -> {
+            try {
+                return new DownloadResponse(
+                        documentStorage.openStream(file.id()),
+                        file.filename(), file.contentType(), file.length());
+            } catch (Exception exception) {
+                return DownloadResponse.error(404);
+            }
+        });
     }
 
     private void setUpBinder() {
@@ -501,13 +653,13 @@ public class CurrentDeviceSubView extends VerticalLayout {
         columnInvoiceNumber.setEditorComponent(tfInvoiceNumber);
 
         deviceBinder.addValueChangeListener(valueChangeEvent -> {
-            try {
-                deviceBinder.writeBean(selectedDevice);
-            } catch (ValidationException e) {
-                throw new RuntimeException(e);
-            }
-            deviceService.save(selectedDevice);
-            Notification.show("Toestel is gewijzigd");
+                    try {
+                        deviceBinder.writeBean(selectedDevice);
+                    } catch (ValidationException e) {
+                        throw new RuntimeException(e);
+                    }
+                    deviceService.save(selectedDevice);
+                    Notification.show("Toestel is gewijzigd");
                 }
         );
     }
@@ -617,5 +769,13 @@ public class CurrentDeviceSubView extends VerticalLayout {
 
     public void setselectedWorkAddress(Address selectedWorkAddress) {
         this.selectedWorkAddress = selectedWorkAddress;
+        refreshDeviceDocumentIcons();
+    }
+
+    public void refreshDeviceDocumentIcons() {
+        documentInfoCache.clear();
+        if (dataProvider != null) {
+            dataProvider.refreshAll();
+        }
     }
 }

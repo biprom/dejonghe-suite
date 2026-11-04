@@ -1,7 +1,7 @@
 package com.adverto.dejonghe.common.entities.product.product;
 
 import com.adverto.dejonghe.common.entities.enums.product.VAT;
-import com.adverto.dejonghe.common.wizard.WIZARD;
+import com.adverto.dejonghe.common.wizard.WIZARDTYPE;
 import jakarta.persistence.Id;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -74,7 +74,7 @@ public class Product implements Serializable {
     List<String>pdfList;
     List<ProductLink>linkDocumentList;
     boolean boldMode = false;
-    private WIZARD wizard;
+    private Wizard wizardtype;
     @Transient
     boolean selectedMode = false;
     boolean noRecentPriceApproved = false;

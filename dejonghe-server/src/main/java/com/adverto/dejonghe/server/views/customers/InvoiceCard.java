@@ -2,6 +2,9 @@ package com.adverto.dejonghe.server.views.customers;
 
 import com.adverto.dejonghe.common.dbservices.CustomerService;
 import com.adverto.dejonghe.common.dbservices.InvoiceService;
+import com.adverto.dejonghe.common.dbservices.DeviceService;
+import com.adverto.dejonghe.common.services.DocumentFileStorageService;
+import com.adverto.dejonghe.server.views.subViews.CurrentDocumentSubView;
 import com.adverto.dejonghe.common.entities.customers.Address;
 import com.adverto.dejonghe.common.entities.customers.Contact;
 import com.adverto.dejonghe.common.entities.customers.Customer;
@@ -53,6 +56,8 @@ public class InvoiceCard extends Card {
 
     CustomerService customerService;
     InvoiceService invoiceService;
+    DocumentFileStorageService documentFileStorageService;
+    DeviceService deviceService;
     MenuBar actionBar;
 
     private Grid<Contact> contactGrid = new Grid<>();
@@ -609,8 +614,68 @@ public class InvoiceCard extends Card {
         }
     }
 
-    private String safe(String value) {
-        return (value == null || value.equals("N/A")) ? "" : value;
+    // Dezelfde documentbeheer-popup als bij een werfadres, maar met invoiceAddress.
+    // De link blijft zichtbaar als er nog geen bundels zijn.
+    private Component createDocumentBundleLink() {
+        Button link = new Button(VaadinIcon.FOLDER_OPEN.create());
+        link.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
+        link.getStyle()
+                .set("font-size", "20px")
+                .set("cursor", "pointer");
+        updateDocumentBundleLink(link);
+
+        link.addClickListener(event -> openInvoiceDocumentDialog(link));
+        return link;
+    }
+
+    private void updateDocumentBundleLink(Button link) {
+        long count = invoiceAddress == null
+                || invoiceAddress.getCoupledDocumentBundle() == null
+                ? 0
+                : invoiceAddress.getCoupledDocumentBundle().stream()
+                .filter(Objects::nonNull)
+                .count();
+
+        link.setText("Documenten en foto's (" + count + " bundels)");
+    }
+
+    private void openInvoiceDocumentDialog(Button link) {
+        if (invoiceAddress == null || customer == null || customerService == null
+                || documentFileStorageService == null || deviceService == null) {
+            Notification.show("Documentbeheer is momenteel niet beschikbaar.");
+            return;
+        }
+
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Documenten en foto's - facturatieadres");
+        dialog.setWidth("95vw");
+        dialog.setHeight("90vh");
+        dialog.setResizable(true);
+        dialog.setDraggable(true);
+
+        CurrentDocumentSubView documents = new CurrentDocumentSubView(
+                documentFileStorageService, deviceService);
+        documents.setShowDeviceColumn(false);
+        documents.setSizeFull();
+        documents.setSaveHandler(address -> {
+            // invoiceAddress is een Address uit de customer.addresses-lijst.
+            customerService.save(customer);
+            updateDocumentBundleLink(link);
+        });
+        documents.addItemsToGrid(Optional.of(invoiceAddress));
+
+        VerticalLayout dialogLayout = new VerticalLayout(documents);
+        dialogLayout.setSizeFull();
+        dialogLayout.setPadding(false);
+        dialogLayout.setSpacing(false);
+        dialog.add(dialogLayout);
+        dialog.getFooter().add(new Button("Sluiten", event -> dialog.close()));
+        dialog.addOpenedChangeListener(event -> {
+            if (!event.isOpened()) {
+                updateDocumentBundleLink(link);
+            }
+        });
+        dialog.open();
     }
 
     private void setUpCardLayout() {
@@ -741,6 +806,7 @@ public class InvoiceCard extends Card {
         layout.add(getAllInvoicesForCustomer());
         layout.add(checkIfThereAreUnpayedBills());
         layout.add(checkIfThereAreUnpayedExpiredBills());
+        layout.add(createDocumentBundleLink());
         actionBarLayout.add(layout);
         actionBarLayout.add(actionVLayout);
         return actionBarLayout;
@@ -825,7 +891,17 @@ public class InvoiceCard extends Card {
         this.invoiceService = invoiceService;
     }
 
+    public void setDocumentFileStorageService(
+            DocumentFileStorageService documentFileStorageService) {
+        this.documentFileStorageService = documentFileStorageService;
+    }
+
+    public void setDeviceService(DeviceService deviceService) {
+        this.deviceService = deviceService;
+    }
+
     public void setCustomerService(CustomerService customerService) {
         this.customerService = customerService;
     }
+
 }

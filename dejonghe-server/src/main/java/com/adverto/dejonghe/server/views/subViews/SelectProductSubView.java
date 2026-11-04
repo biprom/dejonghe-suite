@@ -3,10 +3,7 @@ package com.adverto.dejonghe.server.views.subViews;
 import com.adverto.dejonghe.common.dbservices.*;
 import com.adverto.dejonghe.common.entities.customers.Address;
 import com.adverto.dejonghe.common.entities.product.product.*;
-import com.adverto.dejonghe.common.wizard.ProductWizard;
 import com.adverto.dejonghe.common.wizard.ProductWizardService;
-import com.adverto.dejonghe.common.wizard.RVSplate.ProductWizardRVSPlateDialog;
-import com.adverto.dejonghe.common.wizard.WIZARD;
 import com.adverto.dejonghe.server.customEvents.AddProductEventListener;
 import com.adverto.dejonghe.server.customEvents.AddRemoveProductEvent;
 import com.adverto.dejonghe.server.customEvents.GetSelectedProductEvent;
@@ -50,7 +47,6 @@ import com.vaadin.flow.theme.lumo.LumoIcon;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Scope;
 
-import java.lang.reflect.WildcardType;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.NumberFormat;
@@ -1576,9 +1572,9 @@ public class SelectProductSubView extends VerticalLayout {
 
     public void addProductToSelectedProductList(Product item) {
 
-        if (item.getWizard() != null) {
+        if (item.getWizardtype() != null) {
             productWizardService.openWizard(
-                    item.getWizard(),
+                    item.getWizardtype().getWizardtype(),
                     item,
                     this::addProductToSelectedProductList
             );

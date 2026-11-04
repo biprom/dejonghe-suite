@@ -516,8 +516,8 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
 
     private void setUpWizardDialog() {
         addWizardDialog = new Dialog();
-        addWizardDialog.setWidth("90%");
-        addWizardDialog.setHeight("90%");
+        addWizardDialog.setWidth("30%");
+        addWizardDialog.setHeight("50%");
         addWizardDialog.add(addWizardView);
         Button cancelButton = new Button("Sluiten", e -> {
             addWizardDialog.close();
@@ -2049,7 +2049,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                     }
 
                     // W - Wizard (onafhankelijk van S/O/C)
-                    if (product.getWizard() != null) {
+                    if (product.getWizardtype() != null) {
 
                         Button wizardButton = new Button("W");
                         wizardButton.getStyle().set("color", "black");

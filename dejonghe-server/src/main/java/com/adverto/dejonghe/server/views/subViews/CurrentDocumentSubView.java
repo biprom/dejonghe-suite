@@ -15,11 +15,7 @@ import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.contextmenu.MenuItem;
 import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.component.html.Anchor;
-import com.vaadin.flow.component.html.H3;
-import com.vaadin.flow.component.html.IFrame;
-import com.vaadin.flow.component.html.Image;
-import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.html.*;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.menubar.MenuBar;
 import com.vaadin.flow.component.menubar.MenuBarVariant;
@@ -65,6 +61,8 @@ public class CurrentDocumentSubView extends VerticalLayout {
 
     private final DocumentFileStorageService storage;
     private final DeviceService deviceService;
+
+    private Grid.Column<DocumentBundle> deviceColumn;
 
     private final Grid<DocumentBundle> grid =
             new Grid<>(DocumentBundle.class, false);
@@ -263,6 +261,7 @@ public class CurrentDocumentSubView extends VerticalLayout {
 
         grid.setWidthFull();
         grid.setAllRowsVisible(true);
+        grid.addClassName("document-bundle-grid");
         // Checkboxen om meerdere bundels tegelijk te selecteren.
         grid.setSelectionMode(Grid.SelectionMode.MULTI);
         grid.addSelectionListener(event -> updateMergeActionState());
@@ -294,16 +293,24 @@ public class CurrentDocumentSubView extends VerticalLayout {
 
         // Regeleindes in de omschrijving behouden, ook na bundels samenvoegen.
         grid.addComponentColumn(bundle -> {
-                    Span description = new Span(
+
+                    Div description = new Div();
+
+                    description.setText(
                             bundle.getComment() == null
                                     ? ""
-                                    : bundle.getComment());
+                                    : bundle.getComment()
+                    );
+
                     description.getStyle()
                             .set("white-space", "pre-wrap")
                             .set("overflow-wrap", "anywhere")
-                            .set("display", "block")
-                            .set("width", "100%");
+                            .set("width", "100%")
+                            .set("height", "auto")
+                            .set("padding", "4px 0");
+
                     return description;
+
                 }).setHeader(descriptionHeader)
                 .setFlexGrow(2);
 
@@ -353,7 +360,7 @@ public class CurrentDocumentSubView extends VerticalLayout {
                 .setFlexGrow(0);
 
         // Bundel koppelen aan meerdere toestellen van dit werfadres.
-        grid.addComponentColumn(this::createDeviceLinkButton)
+        deviceColumn = grid.addComponentColumn(this::createDeviceLinkButton)
                 .setHeader("Toestellen")
                 .setAutoWidth(true)
                 .setFlexGrow(0);
@@ -1809,5 +1816,9 @@ public class CurrentDocumentSubView extends VerticalLayout {
         notification.addThemeVariants(
                 NotificationVariant.ERROR
         );
+    }
+
+    public void setShowDeviceColumn(boolean show) {
+        deviceColumn.setVisible(show);
     }
 }

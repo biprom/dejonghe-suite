@@ -1,6 +1,7 @@
 package com.adverto.dejonghe.server.services.invoice;
 
 import com.adverto.dejonghe.common.dbservices.DeviceService;
+import com.adverto.dejonghe.common.entities.images.DocumentBundle;
 import com.adverto.dejonghe.common.entities.installation.Device;
 import com.adverto.dejonghe.server.Controllers.BillitController;
 import com.adverto.dejonghe.server.Controllers.PdfController;
@@ -2639,7 +2640,100 @@ public class InvoiceServices {
                     }
                 });
 
+        // =====================================================
+        // FOTOBUNDELS AANMAKEN VANUIT DE WERKBONNEN
+        // =====================================================
+
+        List<DocumentBundle> bundles =
+                selectedWorkAddress.getCoupledDocumentBundle() == null
+                        ? new ArrayList<>()
+                        : new ArrayList<>(
+                        selectedWorkAddress.getCoupledDocumentBundle());
+
+        if (selectedInvoice.getWorkOrderList() != null) {
+
+            for (WorkOrder workOrder : selectedInvoice.getWorkOrderList()) {
+
+                if (workOrder == null
+                        || workOrder.getId() == null
+                        || workOrder.getImageList() == null
+                        || workOrder.getImageList().isEmpty()) {
+                    continue;
+                }
+
+                List<String> imageIds = workOrder.getImageList().stream()
+                        .filter(Objects::nonNull)
+                        .filter(id -> !id.isBlank())
+                        .distinct()
+                        .toList();
+
+                if (imageIds.isEmpty()) {
+                    continue;
+                }
+
+                // Voorkom dat dezelfde werkbon meerdere keren
+                // een fotobundel aanmaakt.
+                String bundleId = "workorder-" + workOrder.getId();
+
+                boolean alreadyExists = bundles.stream()
+                        .filter(Objects::nonNull)
+                        .anyMatch(bundle -> bundleId.equals(bundle.getId()));
+
+                if (alreadyExists) {
+                    continue;
+                }
+
+                String description = getWorkOrderDescription(workOrder);
+
+                LocalDate bundleDate =
+                        workOrder.getWorkDateTime() != null
+                                ? workOrder.getWorkDateTime().toLocalDate()
+                                : selectedInvoice.getInvoiceDate();
+
+                DocumentBundle bundle = DocumentBundle.builder()
+                        .id(bundleId)
+                        .date(bundleDate)
+                        .comment(description)
+                        .image(true)
+                        .document(false)
+                        .idDocumentList(new ArrayList<>(imageIds))
+                        .idMachine(new ArrayList<>())
+                        .build();
+
+                bundles.add(bundle);
+            }
+        }
+
+        selectedWorkAddress.setCoupledDocumentBundle(bundles);
+
         customerService.save(customer);
+    }
+
+    private String getWorkOrderDescription(WorkOrder workOrder) {
+
+        if (workOrder.getWorkOrderHeaderList() == null) {
+            return "";
+        }
+
+        return workOrder.getWorkOrderHeaderList().stream()
+                .filter(Objects::nonNull)
+                .map(header -> {
+
+                    String title = header.getTitle() == null
+                            ? ""
+                            : header.getTitle().trim();
+
+                    String description = header.getDescription() == null
+                            ? ""
+                            : header.getDescription().trim();
+
+                    return Stream.of(title, description)
+                            .filter(text -> !text.isBlank())
+                            .collect(Collectors.joining("\n"));
+                })
+                .filter(text -> !text.isBlank())
+                .distinct()
+                .collect(Collectors.joining("\n\n"));
     }
 
     public void addReminder(Invoice invoice) {

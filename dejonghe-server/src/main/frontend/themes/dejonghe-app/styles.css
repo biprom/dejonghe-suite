@@ -305,3 +305,9 @@ vaadin-grid.document-grid::part(body-cell) {
     height: auto;
     align-content: center;
 }
+
+vaadin-grid.document-bundle-grid::part(body-cell) {
+    white-space: normal;
+    height: auto;
+    min-height: var(--lumo-size-m);
+}

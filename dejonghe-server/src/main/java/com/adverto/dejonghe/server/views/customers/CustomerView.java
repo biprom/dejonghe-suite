@@ -1,5 +1,7 @@
 package com.adverto.dejonghe.server.views.customers;
 
+import com.adverto.dejonghe.common.dbservices.DeviceService;
+import com.adverto.dejonghe.common.services.DocumentFileStorageService;
 import com.adverto.dejonghe.server.Controllers.GoogleRestController;
 import com.adverto.dejonghe.common.dbservices.CustomerService;
 import com.adverto.dejonghe.common.dbservices.InvoiceService;
@@ -25,6 +27,9 @@ public class CustomerView extends VerticalLayout implements BeforeEnterObserver,
     CustomerService customerService;
     InvoiceService invoiceService;
     GoogleRestController googleRestController;
+    DeviceService deviceService;
+    DocumentFileStorageService documentFileStorageService;
+
 
     Customer selectedCustomer;
     InvoiceCard invoiceCard;
@@ -36,10 +41,14 @@ public class CustomerView extends VerticalLayout implements BeforeEnterObserver,
 
     public CustomerView(CustomerService customerService,
                         InvoiceService invoiceService,
-                        GoogleRestController googleRestController) {
+                        GoogleRestController googleRestController,
+                        DeviceService deviceService,
+                        DocumentFileStorageService documentFileStorageService) {
         this.customerService = customerService;
         this.invoiceService = invoiceService;
         this.googleRestController = googleRestController;
+        this.deviceService = deviceService;
+        this.documentFileStorageService = documentFileStorageService;
 
         this.getStyle()
                 .set("display", "flex")
@@ -133,6 +142,8 @@ public class CustomerView extends VerticalLayout implements BeforeEnterObserver,
         invoiceCard = new InvoiceCard();
         invoiceCard.setInvoiceService(invoiceService);
         invoiceCard.setCustomerService(customerService);
+        invoiceCard.setDeviceService(deviceService);
+        invoiceCard.setDocumentFileStorageService(documentFileStorageService);
         invoiceCard.setWidthFull();
         invoiceCardVerticalLayout.add(invoiceCard);
         return invoiceCardVerticalLayout;

@@ -11,6 +11,7 @@ import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -686,10 +687,29 @@ public class ProductWizardRVSPlateDialog extends Dialog {
          * 1 dm³ = 1.000.000 mm³.
          * RVS weegt ongeveer 8 kg/dm³.
          */
+        /*
+         * Volume staat in mm³.
+         * Rho wordt uit de Wizard-configuratie
+         * van het geselecteerde artikel gelezen.
+         *
+         * Rho is uitgedrukt in kg/m³.
+         * 1 m³ = 1.000.000.000 mm³.
+         */
+        Double rho = selectedItem.getWizardtype() != null
+                ? selectedItem.getWizardtype().getRho()
+                : null;
+
+        if (rho == null || !Double.isFinite(rho) || rho <= 0) {
+            Notification.show(
+                    "Geen geldige massadichtheid ingesteld voor dit artikel."
+            );
+            return;
+        }
+
         double weight =
                 configuration.getVolume()
-                        / 1_000_000.0
-                        * 8.0;
+                        / 1_000_000_000.0
+                        * rho;
 
         ProductPriceTotals totals =
                 new ProductPriceTotals();
@@ -750,7 +770,15 @@ public class ProductWizardRVSPlateDialog extends Dialog {
          * zodat eigenschappen zoals BTW, artikelcode en eenheid
          * behouden blijven.
          */
-        Product combinedProduct = selectedItem;
+        Product combinedProduct = new Product();
+
+        org.springframework.beans.BeanUtils.copyProperties(
+                selectedItem,
+                combinedProduct
+        );
+
+// Nieuwe productregel voor de werkbon
+        combinedProduct.setId(null);
 
         combinedProduct.setInternalName(
                 createCombinedDescription(
@@ -783,7 +811,7 @@ public class ProductWizardRVSPlateDialog extends Dialog {
 
         //remove wizard field so the wizard does not show op when added to selectedProductList.
         //this would happen after filling in the wizard (loop)
-        combinedProduct.setWizard(null);
+        combinedProduct.setWizardtype(null);
 
         onProductsAdded.accept(combinedProduct);
     }

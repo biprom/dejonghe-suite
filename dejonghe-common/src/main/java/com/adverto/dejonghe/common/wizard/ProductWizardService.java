@@ -2,6 +2,7 @@ package com.adverto.dejonghe.common.wizard;
 
 import com.adverto.dejonghe.common.dbservices.ProductService;
 import com.adverto.dejonghe.common.entities.product.product.Product;
+import com.adverto.dejonghe.common.wizard.RVSplate.ProductWizardProfileDialog;
 import com.adverto.dejonghe.common.wizard.RVSplate.ProductWizardRVSPlateDialog;
 import org.springframework.stereotype.Service;
 
@@ -17,16 +18,21 @@ public class ProductWizardService {
     }
 
     public void openWizard(
-            WIZARD wizard,
+            WIZARDTYPE wizardtype,
             Product selectedProduct,
             Consumer<Product> onProductsAdded) {
 
-        switch (wizard) {
+        switch (wizardtype) {
 
-            case RVS_PLATE -> new ProductWizardRVSPlateDialog(
+            case PLATE -> new ProductWizardRVSPlateDialog(
                     onProductsAdded,
                     selectedProduct,
                     productService
+            ).open();
+
+            case PROFILE -> new ProductWizardProfileDialog(
+                    onProductsAdded,
+                    selectedProduct
             ).open();
         }
     }

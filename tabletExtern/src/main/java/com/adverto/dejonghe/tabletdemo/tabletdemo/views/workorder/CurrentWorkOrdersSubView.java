@@ -104,8 +104,11 @@ public class CurrentWorkOrdersSubView extends VerticalLayout {
                             .filter(workOrder ->
                                     workOrder.getWorkOrderHeaderList().stream()
                                             .anyMatch(header ->
-                                                    header.getDescription() != null &&
-                                                            header.getDescription().toLowerCase().contains(event.getValue().toLowerCase())
+                                                    (header.getDescription() != null &&
+                                                            header.getDescription().toLowerCase().contains(event.getValue().toLowerCase()))
+                                                            ||
+                                                            (header.getTitle() != null &&
+                                                                    header.getTitle().toLowerCase().contains(event.getValue().toLowerCase()))
                                             )
                             )
                             .collect(Collectors.toList())

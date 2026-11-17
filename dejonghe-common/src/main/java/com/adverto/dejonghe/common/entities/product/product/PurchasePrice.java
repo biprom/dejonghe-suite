@@ -20,6 +20,8 @@ public class PurchasePrice {
     private E_Product_PurchasingType purchasingType;
     private Double quantity;
     private Double price;
+    private Double quantityKg;
+    private Double priceKg;
     private Supplier supplier;
     private String comment;
 }

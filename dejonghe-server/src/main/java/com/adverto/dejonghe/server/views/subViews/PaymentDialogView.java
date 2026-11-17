@@ -1,22 +1,25 @@
+
 package com.adverto.dejonghe.server.views.subViews;
 
 import com.adverto.dejonghe.common.entities.invoice.Invoice;
 import com.adverto.dejonghe.common.entities.invoice.Payment;
 import com.adverto.dejonghe.server.services.invoice.InvoiceServices;
+
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.Focusable;
+import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.datepicker.DatePicker;
-import com.vaadin.flow.component.grid.FooterRow;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.dataview.GridListDataView;
 import com.vaadin.flow.component.grid.editor.Editor;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
-import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.textfield.NumberField;
 import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.data.binder.Binder;
-import com.vaadin.flow.data.converter.StringToDoubleConverter;
+
 import org.springframework.context.annotation.Scope;
 
 import java.text.NumberFormat;
@@ -31,30 +34,39 @@ import java.util.Optional;
 @Scope("prototype")
 public class PaymentDialogView extends Div {
 
-    InvoiceServices invoiceServices;
+    private final InvoiceServices invoiceServices;
 
-    Invoice invoice;
-    Grid<Payment> paymentGrid;
-    GridListDataView<Payment> paymentGridListDataView;
+    private Invoice invoice;
 
-    Grid.Column<Payment> paymentDateColumn;
-    Grid.Column<Payment> paymentCommentColumn;
-    Grid.Column<Payment> paymentAmountColumn;
+    private Grid<Payment> paymentGrid;
+    private GridListDataView<Payment> paymentGridListDataView;
 
-    Binder<Payment>paymentBinder;
-    Editor<Payment> paymentEditor;
+    private Grid.Column<Payment> paymentDateColumn;
+    private Grid.Column<Payment> paymentCommentColumn;
+    private Grid.Column<Payment> paymentAmountColumn;
+    private Grid.Column<Payment> paymentActionColumn;
 
-    FooterRow footerRow;
+    private Binder<Payment> paymentBinder;
+    private Editor<Payment> paymentEditor;
 
-    NumberFormat df = NumberFormat.getNumberInstance(new Locale("nl", "BE"));
+    private DatePicker datePicker;
+    private NumberField amountField;
+
+    // Lege invoerregel, geen echte betaling
+    private Payment draftPayment;
+
+    private final NumberFormat df =
+            NumberFormat.getNumberInstance(
+                    Locale.forLanguageTag("nl-BE"));
 
     public PaymentDialogView(InvoiceServices invoiceServices) {
         this.invoiceServices = invoiceServices;
 
-        setUpPaymentGrid();
         setUpNumberFormat();
-        this.setSizeFull();
-        this.add(paymentGrid);
+        setUpPaymentGrid();
+
+        setSizeFull();
+        add(paymentGrid);
     }
 
     private void setUpNumberFormat() {
@@ -63,154 +75,382 @@ public class PaymentDialogView extends Div {
         df.setGroupingUsed(true);
     }
 
+    private boolean isDraft(Payment payment) {
+        return payment == draftPayment;
+    }
+
     private void setUpPaymentGrid() {
+
         paymentGrid = new Grid<>();
-        paymentGrid.setWidth("100%");
-        paymentGrid.setHeight("100%");
+        paymentGrid.setSizeFull();
+
+        // DATUM
         paymentDateColumn = paymentGrid.addColumn(item -> {
-            if(item.getPaymentDate() != null) {
-                return item.getPaymentDate().format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
-            }
-            else{
-                return "";
-            }
-        }).setHeader("Datum").setResizable(true).setFlexGrow(3);
 
-        paymentCommentColumn = paymentGrid.addColumn(item -> item.getComment()).setHeader("Commentaar").setResizable(true).setAutoWidth(true).setFlexGrow(3);
+                    if (isDraft(item) || item.getPaymentDate() == null) {
+                        return "";
+                    }
 
-        paymentAmountColumn = paymentGrid.addColumn(item -> df.format(item.getPaymentAmount()) + " €").setHeader("Bedrag").setResizable(true).setAutoWidth(true).setFlexGrow(3);
+                    return item.getPaymentDate().format(
+                            DateTimeFormatter.ofPattern("dd-MM-yyyy"));
 
-        paymentGrid.addComponentColumn(item -> {
-            Icon addIcon = VaadinIcon.PLUS.create();
-            addIcon.addClickListener(x -> {
-                Payment payment = new Payment();
-                payment.setPaymentDate(LocalDate.now());
-                try{
-                    payment.setPaymentAmount(invoice.getTotalAmountTempPlaceholder() - invoice.getPaymentList().stream().mapToDouble(pay -> pay.getPaymentAmount()).sum());
-                }
-                catch (Exception e){
-                    Notification.show("Kan geen restbedrag berekenen!");
-                }
-                paymentGridListDataView.addItem(payment);
-            });
-            return addIcon;
-        });
+                }).setHeader("Datum")
+                .setResizable(true)
+                .setFlexGrow(3);
 
-        paymentGrid.addComponentColumn(item -> {
-            Icon removeIcon = VaadinIcon.TRASH.create();
-            removeIcon.setColor("red");
-            removeIcon.addClickListener(x -> {
-                paymentGridListDataView.removeItem(item);
-            });
-            return removeIcon;
-        });
+        // COMMENTAAR
+        paymentCommentColumn = paymentGrid.addColumn(item -> {
 
+                    if (isDraft(item) || item.getComment() == null) {
+                        return "";
+                    }
+
+                    return item.getComment();
+
+                }).setHeader("Commentaar")
+                .setResizable(true)
+                .setFlexGrow(3);
+
+        // BEDRAG
+        paymentAmountColumn = paymentGrid.addColumn(item -> {
+
+                    if (isDraft(item) || item.getPaymentAmount() == null) {
+                        return "";
+                    }
+
+                    return df.format(item.getPaymentAmount()) + " €";
+
+                }).setHeader("Bedrag")
+                .setResizable(true)
+                .setFlexGrow(3);
+
+        // ACTIES
+        paymentActionColumn = paymentGrid.addComponentColumn(item -> {
+
+                    if (isDraft(item)) {
+
+                        Icon addIcon = VaadinIcon.PLUS.create();
+
+                        addIcon.getElement().setAttribute(
+                                "title", "Nieuwe betaling invoeren");
+
+                        addIcon.addClickListener(e ->
+                                editPayment(item, paymentAmountColumn));
+
+                        return addIcon;
+                    }
+
+                    Icon removeIcon = VaadinIcon.TRASH.create();
+                    removeIcon.setColor("red");
+
+                    removeIcon.addClickListener(e -> {
+
+                        if (paymentEditor.isOpen()) {
+                            paymentEditor.cancel();
+                        }
+
+                        // Verwijder uit de echte betalingen
+                        if (invoice != null &&
+                                invoice.getPaymentList() != null) {
+
+                            invoice.getPaymentList()
+                                    .removeIf(p -> p == item);
+                        }
+
+                        // Verwijder uit de Grid
+                        paymentGridListDataView.removeItem(item);
+
+                        updatePaymentTotals();
+                    });
+
+                    return removeIcon;
+
+                }).setWidth("120px")
+                .setFlexGrow(0);
+
+        // BINDER EN EDITOR
         paymentBinder = new Binder<>(Payment.class);
+
         paymentEditor = paymentGrid.getEditor();
         paymentEditor.setBinder(paymentBinder);
 
-        DatePicker datePicker = new DatePicker();
+        // Pas echt opslaan na bevestiging
+        paymentEditor.setBuffered(true);
+
+        // DATUM EDITOR
+        datePicker = new DatePicker();
+        datePicker.setWidthFull();
+
         datePicker.setI18n(
                 new DatePicker.DatePickerI18n()
                         .setFirstDayOfWeek(1));
-        datePicker.setWidthFull();
-        addCloseHandler(datePicker, paymentEditor);
+
         paymentBinder.forField(datePicker)
-                .withNullRepresentation(LocalDate.now())
-                .asRequired("Gelieve een betaaldatum in te geven aub.")
-                .bind(Payment::getPaymentDate, Payment::setPaymentDate);
+                .asRequired("Gelieve een betaaldatum in te geven.")
+                .bind(Payment::getPaymentDate,
+                        Payment::setPaymentDate);
+
         paymentDateColumn.setEditorComponent(datePicker);
 
+        // COMMENTAAR EDITOR
         TextField tfComment = new TextField();
         tfComment.setWidthFull();
-        addCloseHandler(tfComment, paymentEditor);
+
         paymentBinder.forField(tfComment)
                 .withNullRepresentation("")
-                .bind(Payment::getComment, Payment::setComment);
+                .bind(Payment::getComment,
+                        Payment::setComment);
+
         paymentCommentColumn.setEditorComponent(tfComment);
 
-        TextField tfAmount = new TextField();
-        tfAmount.setWidthFull();
-        addCloseHandler(tfAmount, paymentEditor);
-        paymentBinder.forField(tfAmount)
-                .withNullRepresentation("0.0")
-                .asRequired("Gelieve een aantal in te geven aub.")
-                .withConverter(
-                        new StringToDoubleConverter("Dit is geen decimaal getal"))
-                .bind(Payment::getPaymentAmount, Payment::setPaymentAmount);
-        paymentAmountColumn.setEditorComponent(tfAmount);
+        // BEDRAG EDITOR
+        amountField = new NumberField();
+        amountField.setWidthFull();
+        amountField.setStep(0.01);
 
-        paymentBinder.addValueChangeListener(event -> {
-            Payment paymentToChange = paymentEditor.getItem();
-            invoice.setTotalPayedAmount(invoiceServices.getTotalPayed(invoice).get());
-            paymentBinder.readBean(paymentToChange);
+        paymentBinder.forField(amountField)
+                .asRequired("Gelieve een bedrag in te geven.")
+                .withValidator(
+                        value -> value != null
+                                && Double.isFinite(value)
+                                && value > 0,
+                        "Het bedrag moet groter zijn dan 0."
+                )
+                .bind(Payment::getPaymentAmount,
+                        Payment::setPaymentAmount);
+
+        paymentAmountColumn.setEditorComponent(amountField);
+
+        // OPSLAAN EN ANNULEREN
+        Button saveButton = new Button(
+                "Opslaan",
+                e -> paymentEditor.save()
+        );
+
+        Button cancelButton = new Button(
+                "Annuleren",
+                e -> paymentEditor.cancel()
+        );
+
+        HorizontalLayout editorActions =
+                new HorizontalLayout(saveButton, cancelButton);
+
+        editorActions.setPadding(false);
+        editorActions.setSpacing(true);
+
+        paymentActionColumn.setEditorComponent(editorActions);
+
+        // BIJ OPSLAAN VAN EEN BETALING
+        paymentEditor.addSaveListener(event -> {
+
+            Payment savedPayment = event.getItem();
+
+            // Was dit de lege invoerregel?
+            if (isDraft(savedPayment)) {
+
+                // Nu pas registreren als echte betaling
+                invoice.getPaymentList().add(savedPayment);
+
+                // Maak een nieuwe lege invoerregel
+                draftPayment = new Payment();
+
+                paymentGridListDataView.addItem(draftPayment);
+            }
+
+            paymentGridListDataView.refreshItem(savedPayment);
+
+            updatePaymentTotals();
+        });
+
+        // OPEN EDITOR BIJ KLIKKEN OP EEN REGEL
+        paymentGrid.addItemClickListener(event -> {
+
+            if (event.getColumn() == paymentActionColumn) {
+                return;
+            }
+
+            editPayment(event.getItem(), event.getColumn());
+        });
+
+        paymentGrid.appendFooterRow();
+    }
+
+
+    private void editPayment(
+            Payment payment,
+            Grid.Column<Payment> column) {
+
+        if (invoice == null || payment == null) {
+            return;
+        }
+
+        if (paymentEditor.isOpen()) {
+            paymentEditor.cancel();
+        }
+
+        // Alleen een voorstel doen bij een nieuwe betaling
+        if (isDraft(payment)) {
+
+            // Zorg dat het actuele factuurtotaal berekend is
             setTotalsInFooter();
-        });
 
-        paymentGrid.addItemClickListener(e -> {
-            paymentEditor.editItem(e.getItem());
-            Component editorComponent = e.getColumn().getEditorComponent();
+            // Bereken het resterende bedrag
+            double remainingAmount = getRemainingAmount();
+
+            // Vul het voorstel in VOORDAT de editor opent
+            payment.setPaymentDate(LocalDate.now());
+
+            if (remainingAmount > 0) {
+                payment.setPaymentAmount(remainingAmount);
+            } else {
+                payment.setPaymentAmount(null);
+            }
+        }
+
+        // Vaadin Binder leest nu de ingevulde Payment-waarden
+        paymentEditor.editItem(payment);
+
+        // Focus op de aangeklikte kolom
+        if (column != null) {
+
+            Component editorComponent =
+                    column.getEditorComponent();
+
             if (editorComponent instanceof Focusable) {
-                ((Focusable) editorComponent).focus();
+                ((Focusable<?>) editorComponent).focus();
             }
-        });
-
-        footerRow = paymentGrid.appendFooterRow();
-
-    }
-
-    private void setTotalsInFooter(){
-        try{
-            paymentDateColumn.setFooter("");
-
-            Optional<Double> amount = invoiceServices.calcTotalNetFromInvoice(invoice);
-            Optional<Double> vat = invoiceServices.calcTotalTaxFromInvoice(invoice);
-
-            if(amount.isPresent() && vat.isPresent()){
-                invoice.setTotalAmountTempPlaceholder(amount.get()+vat.get());
-            }
-
-            paymentAmountColumn.setFooter(String.format("%s €", df.format(invoice.getPaymentList().stream().mapToDouble(item -> item.getPaymentAmount()).sum())) + " van " +String.format("%s €", df.format(invoice.getTotalAmountTempPlaceholder()))+ " betaald");
-        }
-        catch(Exception e){
-            paymentCommentColumn.setFooter("N/A");
         }
     }
 
 
+    private double getTotalPaid() {
 
-    private static void addCloseHandler(Component textField,
-                                        Editor<Payment> editor) {
-        textField.getElement().addEventListener("keydown", e -> editor.cancel())
-                .setFilter("event.code === 'Escape'");
+        if (invoice == null ||
+                invoice.getPaymentList() == null) {
+            return 0.0;
+        }
+
+        return invoice.getPaymentList().stream()
+                .map(Payment::getPaymentAmount)
+                .filter(value ->
+                        value != null &&
+                                Double.isFinite(value))
+                .mapToDouble(Double::doubleValue)
+                .sum();
+    }
+
+    private double getRemainingAmount() {
+
+        if (invoice == null) {
+            return 0.0;
+        }
+
+        Double totalAmount =
+                invoice.getTotalAmountTempPlaceholder();
+
+        if (totalAmount == null ||
+                !Double.isFinite(totalAmount)) {
+            return 0.0;
+        }
+
+        double remaining = totalAmount - getTotalPaid();
+
+        // Bedrag afronden op 2 decimalen
+        return Math.max(
+                0.0,
+                Math.round(remaining * 100.0) / 100.0
+        );
+    }
+
+    private void updatePaymentTotals() {
+
+        if (invoice == null) {
+            return;
+        }
+
+        invoice.setTotalPayedAmount(getTotalPaid());
+
+        setTotalsInFooter();
+    }
+
+    private void setTotalsInFooter() {
+
+        try {
+
+            Optional<Double> amount =
+                    invoiceServices.calcTotalNetFromInvoice(invoice);
+
+            Optional<Double> vat =
+                    invoiceServices.calcTotalTaxFromInvoice(invoice);
+
+            if (amount.isPresent() && vat.isPresent()) {
+
+                invoice.setTotalAmountTempPlaceholder(
+                        amount.get() + vat.get());
+            }
+
+            double totalPaid = getTotalPaid();
+
+            Double invoiceAmount =
+                    invoice.getTotalAmountTempPlaceholder();
+
+            double totalInvoice =
+                    invoiceAmount != null ? invoiceAmount : 0.0;
+
+            paymentAmountColumn.setFooter(
+                    df.format(totalPaid) + " € van " +
+                            df.format(totalInvoice) + " € betaald"
+            );
+
+        } catch (Exception e) {
+
+            paymentAmountColumn.setFooter("N/A");
+        }
     }
 
     public void setInvoice(Invoice item) {
+
+        if (paymentEditor.isOpen()) {
+            paymentEditor.cancel();
+        }
+
         this.invoice = item;
-        if((invoice != null) && (invoice.getPaymentList() != null) && (invoice.getPaymentList().size() > 0)) {
-            paymentGridListDataView = paymentGrid.setItems(invoice.getPaymentList());
-            setTotalsInFooter();
+
+        if (invoice == null) {
+
+            draftPayment = null;
+
+            paymentGridListDataView =
+                    paymentGrid.setItems(new ArrayList<>());
+
+            paymentAmountColumn.setFooter("");
+
+            return;
         }
-        else{
-            List<Payment> paymentList = new ArrayList<>();
-            Payment payment = new Payment();
-            payment.setPaymentDate(LocalDate.now());
-            try{
-                if(invoice.getPaymentList() != null){
-                    payment.setPaymentAmount(invoice.getTotalAmountTempPlaceholder() - invoice.getPaymentList().stream().mapToDouble(pay -> pay.getPaymentAmount()).sum());
-                }
-                else{
-                    payment.setPaymentAmount(invoice.getTotalAmountTempPlaceholder() - 0.0);
-                }
-            }
-            catch (Exception e){
-                Notification.show("Kan geen restbedrag berekenen!");
-            }
-            paymentList.add(payment);
-            invoice.setPaymentList(paymentList);
-            paymentGridListDataView = paymentGrid.setItems(invoice.getPaymentList());
-            setTotalsInFooter();
+
+        // Zorg dat de betalingslijst bestaat
+        if (invoice.getPaymentList() == null) {
+            invoice.setPaymentList(new ArrayList<>());
         }
+
+        // Kopie voor de Grid
+        // De echte betalingen blijven in invoice
+        List<Payment> gridPayments =
+                new ArrayList<>(invoice.getPaymentList());
+
+        // Voeg 1 lege invoerregel toe
+        draftPayment = new Payment();
+
+        gridPayments.add(draftPayment);
+
+        paymentGridListDataView =
+                paymentGrid.setItems(gridPayments);
+
+        // Gebruik objectidentiteit voor de Grid
+        paymentGridListDataView.setIdentifierProvider(
+                System::identityHashCode);
+
+        updatePaymentTotals();
     }
 
     public Invoice getInvoiceToSave() {

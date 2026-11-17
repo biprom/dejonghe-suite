@@ -86,5 +86,4 @@ public class Product implements Serializable {
     double recentIndustryPrice;
     @Transient
     double recentAgroPrice;
-
 }

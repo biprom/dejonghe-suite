@@ -3,6 +3,7 @@ package com.adverto.dejonghe.server.views.articles;
 import com.adverto.dejonghe.common.dbservices.*;
 import com.adverto.dejonghe.common.entities.product.product.*;
 import com.adverto.dejonghe.common.services.SetService;
+import com.adverto.dejonghe.common.wizard.WIZARDTYPE;
 import com.adverto.dejonghe.server.views.subViews.*;
 import com.adverto.dejonghe.common.entities.enums.employee.UserFunction;
 import com.adverto.dejonghe.common.entities.product.enums.E_Product_Level;
@@ -62,8 +63,8 @@ import static com.vaadin.flow.component.button.ButtonVariant.LUMO_TERTIARY_INLIN
 @Menu(order = 0, icon = LineAwesomeIconUrl.COG_SOLID)
 public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnterObserver {
 
-    private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("/Users/bramvandenberghe/Desktop/dejonghe.xlsx");
-    //private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("D:\\Algemeen\\Documentatie\\Dejonghe-techniek\\Database\\dejonghe.xlsx\\dejonghe.xlsx");
+    //private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("/Users/bramvandenberghe/Desktop/dejonghe.xlsx");
+    private FileSystemResource linkToBulkSpreadsheet = new FileSystemResource("D:\\Algemeen\\Documentatie\\Dejonghe-techniek\\Database\\dejonghe.xlsx\\dejonghe.xlsx");
 
     Notification deleteProductNotification;
 
@@ -164,6 +165,10 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
     Grid.Column unitColumn;
 
     Grid.Column<PurchasePrice> purchaseDateColumn;
+    private Grid.Column<PurchasePrice> purchaseQuantityColumn;
+    private Grid.Column<PurchasePrice> purchaseUnitPriceColumn;
+    private Grid.Column<PurchasePrice> purchaseKgColumn;
+    private Grid.Column<PurchasePrice> purchasePriceKgColumn;
 
     private final Button buttonNewProduct = new Button("+");
     private final Button buttonSave = new Button("Bewaar");
@@ -522,11 +527,13 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         Button cancelButton = new Button("Sluiten", e -> {
             addWizardDialog.close();
             refreshItemsInGrid();
+            updatePurchaseGridColumns(grid.getSelectedItems().stream().findFirst().orElse(null));
         });
         addWizardDialog.getFooter().add(cancelButton);
         addWizardDialog.addDialogCloseActionListener(event -> {
             addWizardDialog.close();
             refreshItemsInGrid();
+            updatePurchaseGridColumns(grid.getSelectedItems().stream().findFirst().orElse(null));
         });
     }
 
@@ -822,7 +829,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 .setFlexGrow(3);
 
 
-        purchasePriceGrid.addComponentColumn(item -> {
+        purchaseQuantityColumn = purchasePriceGrid.addComponentColumn(item -> {
             TextField textField = new TextField();
             if(item.getQuantity() != null){
                 textField.setValue(formatAmount(item.getQuantity()));
@@ -830,11 +837,16 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
             else{
                 textField.setValue("0,0");
             }
+            // Berekende meterwaarden herkenbaar maken, maar handmatige invoer toelaten.
+            styleCalculatedPurchaseField(textField, item.getQuantityKg() != null);
             textField.addValueChangeListener(listener -> {
                 try{
                     Optional<Double>optDoublePurchasePrice = Optional.of(df.parse(textField.getValue()).doubleValue());
                     if(optDoublePurchasePrice.isPresent()){
                         item.setQuantity(optDoublePurchasePrice.get());
+                        if (listener.isFromClient() && isProfilePurchase(selectedProduct)) {
+                            item.setQuantityKg(null); // Handmatige meters hebben voorrang.
+                        }
                     }
                     else{
                         Notification notification = new Notification();
@@ -862,7 +874,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
             return textField;
         }).setHeader("Aantal").setResizable(true).setAutoWidth(true).setFlexGrow(3);
 
-        purchasePriceGrid.addComponentColumn(item -> {
+        purchaseUnitPriceColumn = purchasePriceGrid.addComponentColumn(item -> {
             TextField textField = new TextField();
             if(item.getPrice() != null){
                 textField.setValue(formatAmount(item.getPrice()));
@@ -870,12 +882,16 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
             else{
                 textField.setValue("0,0");
             }
+            styleCalculatedPurchaseField(textField, item.getPriceKg() != null);
             textField.addValueChangeListener(listener -> {
                 try{
 
                     Optional<Double>optDoublePurchasePrice = Optional.of(df.parse(textField.getValue()).doubleValue());
                     if(optDoublePurchasePrice.isPresent()){
                         item.setPrice(optDoublePurchasePrice.get());
+                        if (listener.isFromClient() && isProfilePurchase(selectedProduct)) {
+                            item.setPriceKg(null); // Handmatige prijs per meter heeft voorrang.
+                        }
                     }
                     else{
                         Notification notification = new Notification();
@@ -904,6 +920,69 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
             return textField;
         }).setHeader("Aankoopprijs").setResizable(true).setAutoWidth(true).setFlexGrow(3);
 
+        // Extra aankoopkolommen voor PROFILE. Ze bewaren de originele
+        // aankoopgegevens per kg naast de genormaliseerde meterwaarden.
+        purchaseKgColumn = purchasePriceGrid.addComponentColumn(item -> {
+            TextField field = new TextField();
+            field.setWidthFull();
+            field.setPlaceholder("kg");
+            if (item.getQuantityKg() != null) {
+                field.setValue(formatAmount(item.getQuantityKg()));
+            }
+            field.addValueChangeListener(event -> {
+                if (!event.isFromClient()) return;
+                try {
+                    Double kg = parsePurchaseNumber(event.getValue());
+                    if (kg != null && kg < 0) throw new IllegalArgumentException();
+
+                    // Geen omrekening? Bestaande gegevens niet wijzigen of opslaan.
+                    if (kg != null && !hasValidProfileConversion(selectedProduct)) {
+                        restorePurchaseField(field, item.getQuantityKg());
+                        showMissingProfileConversionWarning();
+                        return;
+                    }
+                    item.setQuantityKg(kg);
+                    if (kg != null) recalculateProfilePurchase(item);
+                    savePurchaseListForSelectedProduct();
+                    purchasePriceGrid.getDataProvider().refreshItem(item);
+                } catch (Exception ex) {
+                    restorePurchaseField(field, item.getQuantityKg());
+                    Notification.show("Geef een geldig aantal kg in");
+                }
+            });
+            return field;
+        }).setHeader("Aantal kg").setResizable(true).setWidth("130px").setFlexGrow(1);
+
+        purchasePriceKgColumn = purchasePriceGrid.addComponentColumn(item -> {
+            TextField field = new TextField();
+            field.setWidthFull();
+            field.setPlaceholder("€/kg");
+            if (item.getPriceKg() != null) {
+                field.setValue(formatAmount(item.getPriceKg()));
+            }
+            field.addValueChangeListener(event -> {
+                if (!event.isFromClient()) return;
+                try {
+                    Double priceKg = parsePurchaseNumber(event.getValue());
+                    if (priceKg != null && priceKg < 0) throw new IllegalArgumentException();
+
+                    if (priceKg != null && !hasValidProfileConversion(selectedProduct)) {
+                        restorePurchaseField(field, item.getPriceKg());
+                        showMissingProfileConversionWarning();
+                        return;
+                    }
+                    item.setPriceKg(priceKg);
+                    if (priceKg != null) recalculateProfilePurchase(item);
+                    savePurchaseListForSelectedProduct();
+                    purchasePriceGrid.getDataProvider().refreshItem(item);
+                } catch (Exception ex) {
+                    restorePurchaseField(field, item.getPriceKg());
+                    Notification.show("Geef een geldige prijs per kg in");
+                }
+            });
+            return field;
+        }).setHeader("Prijs per kg").setResizable(true).setWidth("140px").setFlexGrow(1);
+
         purchasePriceGrid.addComponentColumn(item -> {
             TextField textField = new TextField();
             textField.setWidth("100%");
@@ -931,7 +1010,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 }
             });
             return textField;
-            }).setFlexGrow(12).setHeader("Commentaar").setResizable(true);
+        }).setFlexGrow(12).setHeader("Commentaar").setResizable(true);
 
         purchasePriceGrid.addComponentColumn(item -> {
             ComboBox<Supplier> comboBox = new ComboBox<>();
@@ -1009,7 +1088,93 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         purchasePriceGrid.sort(
                 List.of(new GridSortOrder<>(purchaseDateColumn, SortDirection.DESCENDING))
         );
+        updatePurchaseGridColumns(selectedProduct);
 
+    }
+
+    private boolean isProfilePurchase(Product product) {
+        return product != null
+                && product.getWizardtype() != null
+                && product.getWizardtype().getWizardtype() == WIZARDTYPE.PROFILE;
+    }
+
+    private void updatePurchaseGridColumns(Product product) {
+        if (purchaseQuantityColumn == null || purchaseUnitPriceColumn == null
+                || purchaseKgColumn == null || purchasePriceKgColumn == null) return;
+        boolean profile = isProfilePurchase(product);
+        purchaseQuantityColumn.setHeader(profile ? "Aantal meter" : "Aantal");
+        purchaseUnitPriceColumn.setHeader(profile ? "Prijs per meter" : "Aankoopprijs");
+        purchaseKgColumn.setVisible(profile);
+        purchasePriceKgColumn.setVisible(profile);
+    }
+
+    private Double parsePurchaseNumber(String input) throws ParseException {
+        if (input == null || input.isBlank()) return null;
+        java.text.ParsePosition position = new java.text.ParsePosition(0);
+        Number number = NumberFormat.getNumberInstance(new Locale("nl", "BE"))
+                .parse(input.trim(), position);
+        if (number == null || position.getIndex() != input.trim().length()) {
+            throw new ParseException("Ongeldig getal", position.getErrorIndex());
+        }
+        double result = number.doubleValue();
+        if (!Double.isFinite(result)) throw new ParseException("Ongeldig getal", 0);
+        return result;
+    }
+
+    private boolean hasValidProfileConversion(Product product) {
+        if (!isProfilePurchase(product)) return false;
+        Double mkg = product.getWizardtype().getMkg();
+        return mkg != null && Double.isFinite(mkg) && mkg > 0;
+    }
+
+    private void showMissingProfileConversionWarning() {
+        Notification.show(
+                "Omrekening niet mogelijk. Vul eerst het profielgewicht in via de Wizard, "
+                        + "of geef aantal meters en aankoopprijs rechtstreeks per meter in.",
+                6000,
+                Notification.Position.MIDDLE);
+    }
+
+    private void restorePurchaseField(TextField field, Double previousValue) {
+        field.setValue(previousValue == null ? "" : formatAmount(previousValue));
+    }
+
+    private void styleCalculatedPurchaseField(TextField field, boolean derivedFromKg) {
+        if (isProfilePurchase(selectedProduct) && derivedFromKg
+                && hasValidProfileConversion(selectedProduct)) {
+            field.getStyle().set("background-color", "var(--lumo-contrast-5pct)");
+            field.setHelperText("Automatisch berekend (mag aangepast worden)");
+        }
+    }
+
+    private void recalculateProfilePurchase(PurchasePrice item) {
+        if (!isProfilePurchase(selectedProduct)) return;
+        Double metersPerKg = selectedProduct.getWizardtype().getMkg();
+        if (metersPerKg == null || !Double.isFinite(metersPerKg) || metersPerKg <= 0) {
+            throw new IllegalArgumentException("Ongeldige m/kg-verhouding in wizard");
+        }
+        // m = kg * m/kg
+        if (item.getQuantityKg() != null) {
+            item.setQuantity(item.getQuantityKg() * metersPerKg);
+        }
+        // EUR/m = (EUR/kg) / (m/kg)
+        if (item.getPriceKg() != null) {
+            item.setPrice(item.getPriceKg() / metersPerKg);
+        }
+    }
+
+    private void savePurchaseListForSelectedProduct() {
+        if (selectedProduct == null) return;
+        productService.save(selectedProduct);
+        String code = selectedProduct.getProductCode();
+        if (code == null || code.isBlank()) return;
+        productService.findByProductCodeEqualCaseInsensitive(code).ifPresent(products -> {
+            for (Product product : products) {
+                if (Objects.equals(product.getId(), selectedProduct.getId())) continue;
+                product.setPurchasePriseList(selectedProduct.getPurchasePriseList());
+                productService.save(product);
+            }
+        });
     }
 
     private void setUpSpreadSheet() {
@@ -1454,7 +1619,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
 
                 }
             }
-             finally {
+            finally {
                 updating.set(false);
             }
 
@@ -1810,7 +1975,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         codeColumn.setEditorComponent(tfProductCode);
         productBinder.forField(tfPositionNumber)
                 .withNullRepresentation("")
-                    .bind(Product::getPositionNumber, Product::setPositionNumber);
+                .bind(Product::getPositionNumber, Product::setPositionNumber);
         posColumn.setEditorComponent(tfPositionNumber);
         tfInternalName.setWidth("100%");
         productBinder.forField(tfInternalName)
@@ -2051,11 +2216,60 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                     // W - Wizard (onafhankelijk van S/O/C)
                     if (product.getWizardtype() != null) {
 
+                        Wizard wizard = product.getWizardtype();
+
                         Button wizardButton = new Button("W");
                         wizardButton.getStyle().set("color", "black");
                         wizardButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
 
                         layout.add(wizardButton);
+
+                        if (wizard.getWizardtype() != null) {
+
+                            switch (wizard.getWizardtype()) {
+
+                                case PROFILE -> {
+
+                                    Double mkg = wizard.getMkg();
+
+                                    if (mkg != null && mkg > 0 && Double.isFinite(mkg)) {
+
+                                        // Database bevat m/kg, toon kg/m
+                                        double kgPerMeter = 1.0 / mkg;
+
+                                        Span coefficient = new Span(
+                                                formatAmount(kgPerMeter) + " kg/m"
+                                        );
+
+                                        coefficient.getStyle()
+                                                .set("font-size", "12px")
+                                                .set("color", "#666")
+                                                .set("white-space", "nowrap");
+
+                                        layout.add(coefficient);
+                                    }
+                                }
+
+                                case PLATE -> {
+
+                                    Double rho = wizard.getRho();
+
+                                    if (rho != null && rho > 0 && Double.isFinite(rho)) {
+
+                                        Span coefficient = new Span(
+                                                formatAmount(rho) + " kg/m³"
+                                        );
+
+                                        coefficient.getStyle()
+                                                .set("font-size", "12px")
+                                                .set("color", "#666")
+                                                .set("white-space", "nowrap");
+
+                                        layout.add(coefficient);
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     return layout;
@@ -2075,7 +2289,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 Icon imageButton = new Icon(VaadinIcon.CAMERA);
                 imageButton.addClickListener(event -> {
                     showImageSubVieuw.setUser(UserFunction.ADMIN);
-                    showImageSubVieuw.setSelectedWorkOrder(product.getPdfList());
+                    showImageSubVieuw.setSelectedWorkOrder(product.getImageList());
                     showImageSubVieuw.setTitle(product.getProductCode() + " " + product.getInternalName());
                     showImageDialog.open();
                 });
@@ -2238,6 +2452,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
 
                 grid.deselect(clickedItem);
                 selectedProduct = null;
+                updatePurchaseGridColumns(null);
 
             } else {
 
@@ -2245,6 +2460,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 grid.select(clickedItem);
 
                 selectedProduct = clickedItem;
+                updatePurchaseGridColumns(clickedItem);
             }
 
             var value = event.getItem();
@@ -2352,6 +2568,8 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         });
 
         grid.addSelectionListener(event -> {
+            Product firstSelected = event.getFirstSelectedItem().orElse(null);
+            updatePurchaseGridColumns(firstSelected);
             if(event.getAllSelectedItems().size() == 0){
                 List<PurchasePrice> newPurchasePriceList = getNewPurchasePriceList();
                 newPurchasePriceList.clear();
@@ -2531,12 +2749,12 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
         hLayout1.add(getJumpToFolderIcon(),
                 setUpHorizontalLayoutFor(cbProductLevel1,bAddProductLevel1,E_Product_Level.PRODUCTLEVEL1),
                 setUpHorizontalLayoutFor(cbProductLevel2,bAddProductLevel2,E_Product_Level.PRODUCTLEVEL2),
-                        setUpHorizontalLayoutFor(cbProductLevel3,bAddProductLevel3,E_Product_Level.PRODUCTLEVEL3),
-                                setUpHorizontalLayoutFor(cbProductLevel4,bAddProductLevel4,E_Product_Level.PRODUCTLEVEL4),
-                                        setUpHorizontalLayoutFor(cbProductLevel5,bAddProductLevel5,E_Product_Level.PRODUCTLEVEL5)
+                setUpHorizontalLayoutFor(cbProductLevel3,bAddProductLevel3,E_Product_Level.PRODUCTLEVEL3),
+                setUpHorizontalLayoutFor(cbProductLevel4,bAddProductLevel4,E_Product_Level.PRODUCTLEVEL4),
+                setUpHorizontalLayoutFor(cbProductLevel5,bAddProductLevel5,E_Product_Level.PRODUCTLEVEL5)
                 //setUpHorizontalLayoutFor(cbProductLevel6,bAddProductLevel6,E_Product_Level.PRODUCTLEVEL6),
-                    //setUpHorizontalLayoutFor(cbProductLevel7,bAddProductLevel7,E_Product_Level.PRODUCTLEVEL7),
-                );
+                //setUpHorizontalLayoutFor(cbProductLevel7,bAddProductLevel7,E_Product_Level.PRODUCTLEVEL7),
+        );
         hLayout2.add(clearFilterButton,tfGeneralFilter,tfFolderFilter, createButtonLayout());
 
         editorDiv.add(hLayout1);
@@ -2615,7 +2833,7 @@ public class ImportArticleViewNieuw extends VerticalLayout implements BeforeEnte
                 default:
                     Notification.show("Geen geselecteerd niveau!");
             }
-                bulkDialog.open();
+            bulkDialog.open();
         });
         horizontalLayout.add(comboBox,addButton);
         return horizontalLayout;

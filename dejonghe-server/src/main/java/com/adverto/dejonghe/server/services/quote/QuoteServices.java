@@ -4,6 +4,7 @@ import com.adverto.dejonghe.common.dbservices.CustomerService;
 import com.adverto.dejonghe.common.dbservices.ProductService;
 import com.adverto.dejonghe.common.dbservices.QuoteService;
 import com.adverto.dejonghe.common.entities.customers.Address;
+import com.adverto.dejonghe.common.entities.invoice.Invoice;
 import com.adverto.dejonghe.common.entities.product.product.Product;
 import com.adverto.dejonghe.common.entities.quote.Quote;
 import com.adverto.dejonghe.common.implementations.ProductImplementation;
@@ -187,6 +188,7 @@ public class QuoteServices {
         baosAttachement = new ByteArrayOutputStream();
 
         DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        DateTimeFormatter COMPAREDFORMATTER = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
         parameters.clear();
 
@@ -320,45 +322,84 @@ public class QuoteServices {
                     .distinct()
                     .collect(Collectors.toList());
 
-            for(LocalDate uniqueDate : uniqueDates){
+            for (LocalDate uniqueDate : uniqueDates) {
 
                 Product pointerProduct = new Product();
+
                 pointerProduct.setTeamNumber(0);
                 pointerProduct.setSelectedAmount(1.0);
-                pointerProduct.setTotalPrice(attachments.stream()
-                                .filter(product -> product.getAttachementNumber().equals(uniqueDate))
+
+                double totalPrice = attachments.stream()
+                        .filter(p -> uniqueDate.equals(p.getAttachementNumber()))
                         .map(Product::getTotalPrice)
                         .filter(Objects::nonNull)
                         .mapToDouble(Double::doubleValue)
-                        .sum());
-                pointerProduct.setSellPrice(pointerProduct.getTotalPrice());
-                pointerProduct.setSellPriceIndustry(pointerProduct.getTotalPrice());
-                pointerProduct.setVat(attachments.get(0).getVat());
+                        .sum();
+
+                pointerProduct.setTotalPrice(totalPrice);
+                pointerProduct.setSellPrice(totalPrice);
+                pointerProduct.setSellPriceIndustry(totalPrice);
+
+                pointerProduct.setVat(attachments.stream()
+                        .filter(p -> uniqueDate.equals(p.getAttachementNumber()))
+                        .findFirst()
+                        .map(Product::getVat)
+                        .orElse(null));
+
                 pointerProduct.setInternalName("materiaal (zie bijlage)");
-                OptionalInt indexWorkHoursOpt =
-                        IntStream.range(0, products.size())
-                                .filter(i -> products.get(i).getBWorkHour() != null)
-                                .filter(i -> (products.get(i).getBWorkHour()) && (products.get(i).getDate() != null) && (products.get(i).getDate().equals(uniqueDate)))
-                                .reduce((first, second) -> first);
 
-                OptionalInt indexCommentOpt =
-                        IntStream.range(0, products.size())
-                            .filter(i -> products.get(i).getBComment() != null)
-                            .filter(i -> (products.get(i).getBComment()) && (products.get(i).getDate() != null) && (products.get(i).getDate().equals(uniqueDate)))
-                            .reduce((first, second) -> second);
+                // Datum van de huidige bijlage
+                String dateString = uniqueDate.format(COMPAREDFORMATTER);
 
 
-                if (indexWorkHoursOpt.isPresent()) {
-                    int index = indexWorkHoursOpt.getAsInt();
-                    products.add(index - 0, pointerProduct);
-                } else if (indexCommentOpt.isPresent()) {
-                    int index = indexCommentOpt.getAsInt();
-                    products.add(index + 1, pointerProduct);
+                //    Zoek commentaar op DEZELFDE datum
+
+                OptionalInt indexCommentOpt = IntStream.range(0, products.size())
+                        .filter(i -> dateString.equals(
+                                products.get(i).getDateToShowOnInvoice()))
+                        .filter(i -> Boolean.TRUE.equals(
+                                products.get(i).getBComment()))
+                        .findFirst();
+
+
+                // 4. Voeg verwijzing toe op correcte positie
+
+                if (indexCommentOpt.isPresent()) {
+
+                    // Begin van het commentaarblok van de juiste datum
+                    int lastCommentIndex = indexCommentOpt.getAsInt();
+
+                    // Doorloop uitsluitend de opeenvolgende commentaarlijnen
+                    while (lastCommentIndex + 1 < products.size()) {
+
+                        Product nextProduct = products.get(lastCommentIndex + 1);
+
+                        // Stop zodra de volgende lijn geen commentaar meer is of een 0- artikel
+                        boolean isComment = Boolean.TRUE.equals(nextProduct.getBComment());
+                        //boolean isZeroPosition = "0".equals(nextProduct.getPositionNumber());
+
+                        if (!isComment) {
+                            break;
+                        }
+
+                        // Een nieuwe ingevulde factuurdatum betekent
+                        // dat er een nieuw blok begint
+                        String nextDate = nextProduct.getDateToShowOnInvoice();
+
+                        if (nextDate != null && !nextDate.isBlank()) {
+                            break;
+                        }
+
+                        lastCommentIndex++;
+                    }
+
+                    // Verwijzing na de laatste opeenvolgende commentaarlijn
+                    products.add(lastCommentIndex + 1, pointerProduct);
+
+                } else {
+
+                    products.add(pointerProduct);
                 }
-                else{
-                    products.add( pointerProduct);
-                }
-
             }
         }
 
@@ -367,18 +408,14 @@ public class QuoteServices {
 
         parameters.put( "ItemDataSource", productImplementation);
 
-        Double totalPriceInvoice = quote.getProductList().stream()
-                .filter(product -> product.getTotalPrice() != null)
-                .mapToDouble(Product::getTotalPrice)
-                .sum();
+        Double totalPriceInvoice = calcTotalNetFromQuote(quote).get();
+
+
 
         parameters.put("netto", totalPriceInvoice);
 
         if((quote.getCustomer().getVatNumber() != null) && (quote.getCustomer().getVatNumber().contains("BE"))) {
-            parameters.put("btwBedrag", quote.getProductList().stream()
-                    .filter(product -> product.getTotalPrice() != null)
-                    .mapToDouble(x -> (x.getTotalPrice() * x.getVat().getValue()) / 100)
-                    .sum());
+            parameters.put("btwBedrag", calcTotalTaxFromInvoice(quote).get());
         }
         else{
             parameters.put("btwBedrag",0.0);
@@ -532,46 +569,48 @@ public class QuoteServices {
 
 
     public Optional<Double> calcTotalNetFromQuote(Quote quote) {
-        if(quote.getProductList() != null){
-            for (Product item : quote.getProductList()) {
-                double roundedTotalPrice = BigDecimal
-                        .valueOf(item.getTotalPrice())
-                        .setScale(2, RoundingMode.HALF_UP)
-                        .doubleValue();
-                item.setTotalPrice(roundedTotalPrice);
-
-            }
-            Double totalNet = quote.getProductList().stream()
-                    .mapToDouble(item -> item.getTotalPrice())
-                    .sum();
-
-            return Optional.of(totalNet);
+        if (quote == null || quote.getProductList() == null) {
+            return Optional.empty();
         }
-        return Optional.empty();
+        return Optional.of(sumRoundedBillableLines(quote.getProductList()).doubleValue());
     }
 
-    public Optional<Double> calcTotalTaxFromQuote(Quote quote) {
-        if(quote.getProductList() != null){
-            for (Product item : quote.getProductList()) {
-                double roundedTotalPrice = BigDecimal
-                        .valueOf(item.getTotalPrice())
-                        .setScale(2, RoundingMode.HALF_UP)
-                        .doubleValue();
-                item.setTotalPrice(roundedTotalPrice);
-
-            }
-            Double totalTax = quote.getProductList().stream()
-                    .mapToDouble(x -> (x.getTotalPrice() * x.getVat().getValue())/100)
-                    .sum();
-
-            double roundedTotalTax = BigDecimal
-                    .valueOf(totalTax)
-                    .setScale(2, RoundingMode.HALF_UP)
-                    .doubleValue();
-
-            return Optional.of(roundedTotalTax);
+    /** Btw op afgeronde artikelbedragen; rond de totale btw slechts eenmaal af. */
+    public Optional<Double> calcTotalTaxFromInvoice(Quote quote) {
+        if (quote == null || quote.getProductList() == null) {
+            return Optional.empty();
         }
-        return Optional.empty();
+        if (quote.getCustomer() == null || quote.getCustomer().getVatNumber() == null
+                || !quote.getCustomer().getVatNumber().contains("BE")) {
+            return Optional.of(0.0);
+        }
+
+        BigDecimal totalTax = quote.getProductList().stream()
+                .filter(Objects::nonNull)
+                .filter(p -> !Boolean.TRUE.equals(p.getMergedProduct()))
+                .filter(p -> p.getTotalPrice() != null && p.getVat() != null)
+                .map(p -> BigDecimal.valueOf(roundInvoiceLine(p.getTotalPrice()))
+                        .multiply(BigDecimal.valueOf(p.getVat().getValue()))
+                        .movePointLeft(2))
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        return Optional.of(totalTax.doubleValue());
+    }
+
+    private BigDecimal sumRoundedBillableLines(List<Product> products) {
+        return products.stream()
+                .filter(Objects::nonNull)
+                .filter(p -> !Boolean.TRUE.equals(p.getMergedProduct()))
+                .map(Product::getTotalPrice)
+                .filter(Objects::nonNull)
+                .map(price -> BigDecimal.valueOf(price).setScale(2, RoundingMode.HALF_UP))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private double roundInvoiceLine(double value) {
+        return BigDecimal.valueOf(value)
+                .setScale(2, RoundingMode.HALF_UP)
+                .doubleValue();
     }
 
     public String getBase64PdfInvoice() {

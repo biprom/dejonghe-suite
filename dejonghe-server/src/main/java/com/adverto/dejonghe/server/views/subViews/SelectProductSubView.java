@@ -392,7 +392,8 @@ public class SelectProductSubView extends VerticalLayout {
         tfFilterSelectedProduct.setPlaceholder("Filter via artikelcode, naam");
         tfFilterSelectedProduct.addValueChangeListener(event -> {
             dataView.setFilter(product ->
-                    product.getTeamNumber() == selectedTeam &&
+
+                    //product.getTeamNumber() == selectedTeam &&
                             (
                                     (product.getProductCode() != null &&
                                             product.getProductCode().toLowerCase().contains(tfFilterSelectedProduct.getValue().toLowerCase()))
@@ -828,10 +829,10 @@ public class SelectProductSubView extends VerticalLayout {
         });
 
         selectedProductGrid.setPartNameGenerator(product -> {
-            if((product.getRemark() != null ) && (product.getRemark() == true)){
-                return "remark";
-            }else if ((product.isNoRecentPrice() == true)) {
+            if ((product.isNoRecentPrice() == true)) {
                 return "noNewPrice";
+            }else if((product.getRemark() != null ) && (product.getRemark() == true)){
+                return "remark";
             }
             else if ((product.getBAttachement() != null) && (product.getBAttachement() == true)) {
                 return "attachement";

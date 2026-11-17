@@ -1094,26 +1094,95 @@ public class NewInvoiceView extends VerticalLayout implements HasUrlParameter<St
         }
     }
 
+
     private List<Product> checkProductPriceWithDB(List<Product> productList) {
-        if((productList != null) && (productList.size() > 0)){
-            for(Product product : productList.stream().filter(x -> ((x.isNoRecentPriceApproved() == false))).collect(Collectors.toList())){
-                if(product.getId() != null){
-                    Optional<Product> dbProduct = productService.findById(product.getId());
-                    if(dbProduct.isPresent()){
-                        if((dbProduct.get().getPurchasePrice() > product.getPurchasePrice())){
-                            product.setNoRecentPrice(true);
-                            product.setRecentPurchasePrice(dbProduct.get().getPurchasePrice());
-                            product.setRecentAgroPrice(dbProduct.get().getSellPrice());
-                            product.setRecentIndustryPrice(dbProduct.get().getSellPriceIndustry());
-                        }
-                        else{
-                            product.setNoRecentPrice(false);
-                        }
-                    }
+
+        if (productList == null || productList.isEmpty()) {
+            return productList;
+        }
+
+        boolean isIndustryCustomer =
+                selectedCustomer != null &&
+                        Boolean.TRUE.equals(selectedCustomer.getBIndustry());
+
+        for (Product product : productList) {
+
+            // Product is al goedgekeurd
+            if (product.isNoRecentPriceApproved()) {
+                continue;
+            }
+
+            if (product.getId() == null) {
+                continue;
+            }
+
+            Optional<Product> dbProductOptional =
+                    productService.findById(product.getId());
+
+            if (dbProductOptional.isEmpty()) {
+                continue;
+            }
+
+            Product dbProduct = dbProductOptional.get();
+
+            // Bepaal de verkoopprijs volgens het klanttype
+            Double dbPrice;
+            Double currentPrice;
+
+            if (isIndustryCustomer) {
+
+                dbPrice = dbProduct.getSellPriceIndustry();
+                currentPrice = product.getSellPriceIndustry();
+
+                // Fallback naar agroprijs indien industrieprijs 0 is
+                if (dbPrice == null || dbPrice == 0.0) {
+                    dbPrice = dbProduct.getSellPrice();
                 }
+
+                if (currentPrice == null || currentPrice == 0.0) {
+                    currentPrice = product.getSellPrice();
+                }
+
+            } else {
+
+                // Agroklant
+                dbPrice = dbProduct.getSellPrice();
+                currentPrice = product.getSellPrice();
+            }
+
+            // Controleer enkel de relevante verkoopprijs
+            boolean hasHigherPrice =
+                    isPriceHigher(dbPrice, currentPrice);
+
+            product.setNoRecentPrice(hasHigherPrice);
+
+            if (hasHigherPrice) {
+
+                product.setRecentPurchasePrice(
+                        dbProduct.getPurchasePrice());
+
+                product.setRecentAgroPrice(
+                        dbProduct.getSellPrice());
+
+                product.setRecentIndustryPrice(
+                        dbProduct.getSellPriceIndustry());
             }
         }
+
         return productList;
+    }
+
+    private boolean isPriceHigher(Double dbValue, Double currentValue) {
+
+        if (dbValue == null || !Double.isFinite(dbValue)) {
+            return false;
+        }
+
+        if (currentValue == null || !Double.isFinite(currentValue)) {
+            return true;
+        }
+
+        return dbValue > currentValue;
     }
 
     @Override

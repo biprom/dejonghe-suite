@@ -110,6 +110,12 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
     ToolsFixedPriceView toolsFixedPriceView;
 
     private boolean newWorkOrderMode = false;
+    // Voorkomt dat Binder.readBean() onbedoeld een automatische save start.
+    private boolean loadingBinderData = false;
+    // Onderdruk tussentijdse autosave tijdens een locatie-wijziging.
+    private boolean changingLocationUi = false;
+    private com.vaadin.flow.shared.Registration fleetVisibilityRegistration;
+    private com.vaadin.flow.shared.Registration fleetHoursRegistration;
     private static final double HEADER_POSITION_NEW = 90;
     private static final double HEADER_POSITION_NORMAL = 50;
 
@@ -288,6 +294,10 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         //hieronder feest!
         getWorkOrderHeader();
+
+        // ComboBox-items moeten bestaan VOOR een Binder.readBean(),
+        // ook wanneer de huidige locatie WORKPLACE is en de velden verborgen zijn.
+        initializeFleetComboBoxes();
 
         formLayout.add(vLayoutHeaderLevel2Tabs);
         formLayout.add(vLayoutHeaderLevel3Tabs,2);
@@ -1162,6 +1172,40 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         }
     }
 
+    private void initializeFleetComboBoxes() {
+        // Slechts eenmaal vullen. Bij het wisselen van locatie mogen de items
+        // niet gereset worden, anders kan Binder.readBean() falen.
+        fleetComboBox.setItems(Fleet.values());
+        fleetComboBox.setItemLabelGenerator(Fleet::getDiscription);
+        fleetWorkTypeComboBox.setItems(FleetWorkType.values());
+        fleetWorkTypeComboBox.setItemLabelGenerator(FleetWorkType::getDiscription);
+    }
+
+    private void readWorkOrderWithoutAutosave(WorkOrder workOrder) {
+        boolean previous = loadingBinderData;
+        loadingBinderData = true;
+        try {
+            workOrderBinder.readBean(workOrder);
+        } finally {
+            loadingBinderData = previous;
+        }
+    }
+
+    private void readHeaderWithoutAutosave(WorkOrderHeader header) {
+        boolean previous = loadingBinderData;
+        loadingBinderData = true;
+        try {
+            workOrderHeaderBinder.readBean(header);
+            // Dezelfde kraanvelden worden hergebruikt voor alle teams.
+            FleetWorkType workType = fleetWorkTypeComboBox.getValue();
+            boolean noCraneHours = Fleet.TRUCK_CRANE.equals(fleetComboBox.getValue())
+                    && (workType == FleetWorkType.DELIVERY || workType == FleetWorkType.NO_WORK);
+            tfFleetHours.setEnabled(!noCraneHours);
+        } finally {
+            loadingBinderData = previous;
+        }
+    }
+
     private void setUpWorkOrderHeaderBinder() {
         workOrderHeaderBinder = new Binder<>(WorkOrderHeader.class);
         workOrderHeaderBinder.forField(typeComboBox)
@@ -1188,12 +1232,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 .bind(WorkOrderHeader::getFleet, WorkOrderHeader::setFleet);
         workOrderHeaderBinder.forField(fleetWorkTypeComboBox)
                 .withValidator(value -> {
-                    Fleet fleet = fleetComboBox.getValue();
-                    if(value != null){
+                    if (!WorkLocation.ON_THE_MOVE.equals(locationComboBox.getValue())) {
                         return true;
                     }
-                    if (Fleet.TRUCK_CRANE.equals(fleet)) {
-                        return false;
+                    if (Fleet.TRUCK_CRANE.equals(fleetComboBox.getValue())) {
+                        return value != null;
                     }
                     return true;
                 }, "Verplichte invulling nodig wegens keuze kraan")
@@ -1202,13 +1245,16 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 .withNullRepresentation("")
                 .withConverter(new StringToDoubleConverter("Dit is geen decimaal getal!"))
                 .withValidator(value -> {
-                    Fleet fleet = fleetComboBox.getValue();
-                    FleetWorkType fleetWorkType = fleetWorkTypeComboBox.getValue();
-                    if((value != null) && (fleetWorkType != null)) {
+                    if (!WorkLocation.ON_THE_MOVE.equals(locationComboBox.getValue())) {
                         return true;
                     }
-                    if ((Fleet.TRUCK_CRANE.equals(fleet)) && ((fleetWorkType.equals(FleetWorkType.INTENS) || (fleetWorkType.equals(FleetWorkType.REGULAR)) ) )) {
-                        return false;
+                    if (!Fleet.TRUCK_CRANE.equals(fleetComboBox.getValue())) {
+                        return true;
+                    }
+                    FleetWorkType fleetWorkType = fleetWorkTypeComboBox.getValue();
+                    if (fleetWorkType == FleetWorkType.INTENS
+                            || fleetWorkType == FleetWorkType.REGULAR) {
+                        return value != null;
                     }
                     return true;
                 }, "Verplichte invulling nodig wegens keuze kraan")
@@ -1222,7 +1268,13 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 .withConverter(new StringToDoubleConverter("Dit is geen decimaal getal!"))
                 .bind(WorkOrderHeader::getTunnelTax, WorkOrderHeader::setTunnelTax);
         workOrderHeaderBinder.addValueChangeListener(event -> {
-
+            if (loadingBinderData || changingLocationUi || selectedWorkOrder == null) {
+                return;
+            }
+            // Alleen echte gebruikersinvoer mag een extra team activeren.
+            if (event.isFromClient()) {
+                updateActiveTeamFromInput();
+            }
             updateWorkOrderUiState();
 
             try {
@@ -1305,10 +1357,17 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         workOrderBinder.forField(cbExtraEmployees4)
                 .bind(WorkOrder::getExtraEmployeesTeam4, WorkOrder::setExtraEmployeesTeam4);
         workOrderBinder.addValueChangeListener(workOrder -> {
+            if (loadingBinderData || changingLocationUi || selectedWorkOrder == null) {
+                return;
+            }
+            if (workOrder.isFromClient()) {
+                updateActiveTeamFromInput();
+            }
             try {
                 updateWorkOrderUiState();
 
-                boolean workhoursValid = ((!selectedWorkOrderTimes.isEmpty()));
+                boolean workhoursValid = selectedWorkOrderTimes != null
+                        && !selectedWorkOrderTimes.isEmpty();
                 if(workhoursValid) {
                     saveSelectedWorkOrder();
                 }
@@ -1569,55 +1628,77 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         locationComboBox.setWidthFull();
         locationComboBox.addValueChangeListener(event -> {
             if (event.getValue() != null) {
-                typeComboBox.clear();
-                typeComboBox.setVisible(true);
-                if(event.getValue().compareTo(WorkLocation.ON_THE_MOVE) == 0){
-                    downColumn.setVisible(true);
-                    overNightColumn.setVisible(true);
-                    upColumn.setVisible(true);
-                    vLayoutHeaderLevel2Tabs.setVisible(true);
-                    vLayoutHeaderLevel3Tabs.setVisible(true);
-                    vLayoutHeaderLevel4Tabs.setVisible(true);
-                    vLayoutHeaderLevel5Tabs.setVisible(true);
-                    vLayoutHeaderLevel2Tabs.removeAll();
-                    vLayoutHeaderLevel3Tabs.removeAll();
-                    vLayoutHeaderLevel4Tabs.removeAll();
-                    vLayoutHeaderLevel5Tabs.removeAll();
-                    vLayoutHeaderLevel6Tabs.removeAll();
-                    vLayoutHeaderLevel7Tabs.removeAll();
-                    vLayoutHeaderLevel8Tabs.removeAll();
-                    vLayoutHeaderLevel2Tabs.add(getLevel2(WorkLocation.ON_THE_MOVE));
-                    vLayoutHeaderLevel3Tabs.add(getLevel5());
-                    vLayoutHeaderLevel4Tabs.add(getLevel3(WorkLocation.ON_THE_MOVE));
-                    vLayoutHeaderLevel5Tabs.add(getLevel4(WorkLocation.ON_THE_MOVE));
-                    vLayoutHeaderLevel6Tabs.add(getLevel6(WorkLocation.ON_THE_MOVE));
-                    workOrderHeaderBinder.validate();
-                    //vLayoutHeaderLevel7Tabs.add(dropEnabledUpload,showImageButton);
-                    //vLayoutHeaderLevel8Tabs.add(finishButton);
+                boolean wasChangingLocationUi = changingLocationUi;
+                changingLocationUi = true;
+                try {
+                    // Een Binder.readBean() is geen wijziging door de technieker.
+                    // Bewaar het bestaande werktype en de Fleet-gegevens bij het heropenen.
+                    if (event.isFromClient()) {
+                        typeComboBox.clear();
+                        if (event.getValue() != WorkLocation.ON_THE_MOVE) {
+                            // Niet langer op verplaatsing: verborgen verplaatsingsvelden
+                            // van het actieve team leegmaken voor de volgende bewaaractie.
+                            fleetComboBox.clear();
+                            fleetWorkTypeComboBox.clear();
+                            tfFleetHours.clear();
+                            tfFleetHours.setEnabled(true);
+                            tfRoadTax.clear();
+                            tfTunnelTax.clear();
+                        }
+                    }
+                    typeComboBox.setVisible(true);
+                    if(event.getValue().compareTo(WorkLocation.ON_THE_MOVE) == 0){
+                        downColumn.setVisible(true);
+                        overNightColumn.setVisible(true);
+                        upColumn.setVisible(true);
+                        vLayoutHeaderLevel2Tabs.setVisible(true);
+                        vLayoutHeaderLevel3Tabs.setVisible(true);
+                        vLayoutHeaderLevel4Tabs.setVisible(true);
+                        vLayoutHeaderLevel5Tabs.setVisible(true);
+                        vLayoutHeaderLevel2Tabs.removeAll();
+                        vLayoutHeaderLevel3Tabs.removeAll();
+                        vLayoutHeaderLevel4Tabs.removeAll();
+                        vLayoutHeaderLevel5Tabs.removeAll();
+                        vLayoutHeaderLevel6Tabs.removeAll();
+                        vLayoutHeaderLevel7Tabs.removeAll();
+                        vLayoutHeaderLevel8Tabs.removeAll();
+                        vLayoutHeaderLevel2Tabs.add(getLevel2(WorkLocation.ON_THE_MOVE));
+                        vLayoutHeaderLevel3Tabs.add(getLevel5());
+                        vLayoutHeaderLevel4Tabs.add(getLevel3(WorkLocation.ON_THE_MOVE));
+                        vLayoutHeaderLevel5Tabs.add(getLevel4(WorkLocation.ON_THE_MOVE));
+                        vLayoutHeaderLevel6Tabs.add(getLevel6(WorkLocation.ON_THE_MOVE));
+                        workOrderHeaderBinder.validate();
+                        //vLayoutHeaderLevel7Tabs.add(dropEnabledUpload,showImageButton);
+                        //vLayoutHeaderLevel8Tabs.add(finishButton);
 
+                    }
+                    else{
+                        downColumn.setVisible(false);
+                        overNightColumn.setVisible(false);
+                        upColumn.setVisible(false);
+                        vLayoutHeaderLevel2Tabs.setVisible(true);
+                        vLayoutHeaderLevel3Tabs.setVisible(true);
+                        vLayoutHeaderLevel4Tabs.setVisible(true);
+                        vLayoutHeaderLevel5Tabs.setVisible(true);
+                        vLayoutHeaderLevel2Tabs.removeAll();
+                        vLayoutHeaderLevel3Tabs.removeAll();
+                        vLayoutHeaderLevel4Tabs.removeAll();
+                        vLayoutHeaderLevel5Tabs.removeAll();
+                        vLayoutHeaderLevel6Tabs.removeAll();
+                        vLayoutHeaderLevel7Tabs.removeAll();
+                        vLayoutHeaderLevel8Tabs.removeAll();
+                        vLayoutHeaderLevel3Tabs.add(getLevel5());
+                        vLayoutHeaderLevel2Tabs.add(getLevel2(WorkLocation.WORKPLACE));
+                        vLayoutHeaderLevel4Tabs.add(getLevel3(WorkLocation.WORKPLACE));
+                        vLayoutHeaderLevel6Tabs.add(getLevel6(WorkLocation.WORKPLACE));
+                        //vLayoutHeaderLevel7Tabs.add(dropEnabledUpload);
+                        //vLayoutHeaderLevel8Tabs.add(finishButton);
+                    }
+                } finally {
+                    changingLocationUi = wasChangingLocationUi;
                 }
-                else{
-                    downColumn.setVisible(false);
-                    overNightColumn.setVisible(false);
-                    upColumn.setVisible(false);
-                    vLayoutHeaderLevel2Tabs.setVisible(true);
-                    vLayoutHeaderLevel3Tabs.setVisible(true);
-                    vLayoutHeaderLevel4Tabs.setVisible(true);
-                    vLayoutHeaderLevel5Tabs.setVisible(true);
-                    vLayoutHeaderLevel2Tabs.removeAll();
-                    vLayoutHeaderLevel3Tabs.removeAll();
-                    vLayoutHeaderLevel4Tabs.removeAll();
-                    vLayoutHeaderLevel5Tabs.removeAll();
-                    vLayoutHeaderLevel6Tabs.removeAll();
-                    vLayoutHeaderLevel7Tabs.removeAll();
-                    vLayoutHeaderLevel8Tabs.removeAll();
-                    vLayoutHeaderLevel3Tabs.add(getLevel5());
-                    vLayoutHeaderLevel2Tabs.add(getLevel2(WorkLocation.WORKPLACE));
-                    vLayoutHeaderLevel4Tabs.add(getLevel3(WorkLocation.WORKPLACE));
-                    vLayoutHeaderLevel6Tabs.add(getLevel6(WorkLocation.WORKPLACE));
-                    //vLayoutHeaderLevel7Tabs.add(dropEnabledUpload);
-                    //vLayoutHeaderLevel8Tabs.add(finishButton);
-                }
+                // De normale Binder-listener kan hierna opslaan als alles geldig is.
+                // Bij laden van bestaande werkbonnen gebeurt geen autosave.
             }
         });
         return locationComboBox;
@@ -1723,18 +1804,29 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             vLayout1.setWidth("100%");
             vLayout1.setSpacing(true);
 
-            fleetComboBox.setItems(Fleet.values());
-            fleetComboBox.setItemLabelGenerator(Fleet::getDiscription);
+            // Items zijn al ingevuld door initializeFleetComboBoxes().
             fleetComboBox.setWidth("100%");
             fleetComboBox.setPlaceholder("Voertuig");
-            fleetComboBox.addValueChangeListener(item -> {
-                if((item.getValue() != null) && (item.getValue().equals(Fleet.TRUCK_CRANE))){
-                    horizontalLayout2.setVisible(true);
-                }
-                else{
-                    horizontalLayout2.setVisible(false);
+            if (fleetVisibilityRegistration != null) {
+                fleetVisibilityRegistration.remove();
+            }
+            fleetVisibilityRegistration = fleetComboBox.addValueChangeListener(item -> {
+                boolean isCrane = Fleet.TRUCK_CRANE.equals(item.getValue());
+                horizontalLayout2.setVisible(isCrane);
+                if (item.isFromClient() && !isCrane) {
+                    // Kraanparameters behoren niet bij een ander voertuig.
+                    boolean prev = changingLocationUi;
+                    changingLocationUi = true;
+                    try {
+                        fleetWorkTypeComboBox.clear();
+                        tfFleetHours.clear();
+                        tfFleetHours.setEnabled(true);
+                    } finally {
+                        changingLocationUi = prev;
+                    }
                 }
             });
+            horizontalLayout2.setVisible(Fleet.TRUCK_CRANE.equals(fleetComboBox.getValue()));
 
             tfRoadTax.setWidth("100%");
             tfRoadTax.setSuffixComponent(new Span("€"));
@@ -1745,11 +1837,13 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
             tfTunnelTax.setPlaceholder("Tunneltaks");
 
             horizontalLayout2.setWidth("100%");
-            fleetWorkTypeComboBox.setItems(FleetWorkType.values());
-            fleetWorkTypeComboBox.setItemLabelGenerator(FleetWorkType::getDiscription);
+            // Items zijn al ingevuld door initializeFleetComboBoxes().
             fleetWorkTypeComboBox.setWidth("50%");
             fleetWorkTypeComboBox.setPlaceholder("Type werk kraan");
-            fleetWorkTypeComboBox.addValueChangeListener(item -> {
+            if (fleetHoursRegistration != null) {
+                fleetHoursRegistration.remove();
+            }
+            fleetHoursRegistration = fleetWorkTypeComboBox.addValueChangeListener(item -> {
                 if(item.isFromClient()) {
                     if ((item.getValue() != null) && ((item.getValue().equals(FleetWorkType.DELIVERY)) || (item.getValue().equals(FleetWorkType.NO_WORK)))) {
                         tfFleetHours.setValue("0");
@@ -1782,8 +1876,12 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
     }
 
     private void calcFleetHoursAgain() {
-        LocalTime up = timeUpPicker.getValue();
-        LocalTime down = timeDownPicker.getValue();
+        LocalTime up = timeUpPicker == null ? null : timeUpPicker.getValue();
+        LocalTime down = timeDownPicker == null ? null : timeDownPicker.getValue();
+        if (up == null || down == null) {
+            proposalAmountHoursCrane = 0;
+            return;
+        }
 
         Duration duration = Duration.between(up, down);
         long hours = duration.toHours();
@@ -1826,7 +1924,8 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         horizontalLayout1.setWidth("100%");
         horizontalLayout1.setSpacing(true);
         horizontalLayout1.setClassName("selected");
-        workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(0));
+        // Niet opnieuw readBean() aanroepen midden in een locationComboBox-event.
+        // setSelectedWorkOrder()/readNewWorkOrder() doet dat al na het opbouwen.
         addItemsToWorkTimeGrid(selectedWorkOrder.getWorkOrderHeaderList().get(0).getWorkOrderTimeList());
         addItemsToBowlGrid(selectedWorkOrder.getWorkOrderHeaderList().get(0).getBowlEntityList());
 
@@ -1835,7 +1934,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
             tryChangeTeam(1, () -> {
 
-                workOrderHeaderBinder.readBean(
+                readHeaderWithoutAutosave(
                         selectedWorkOrder.getWorkOrderHeaderList().get(0)
                 );
 
@@ -1852,6 +1951,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 selectedTeam = 1;
 
                 selectProductSubView.setSelectedTeam(selectedTeam - 1);
+                updateWorkOrderUiState();
 
                 horizontalLayout1.setClassName("selected");
                 horizontalLayout2.setClassName("");
@@ -1909,7 +2009,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                     workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
                 }
 
-                workOrderHeaderBinder.readBean(
+                readHeaderWithoutAutosave(
                         selectedWorkOrder.getWorkOrderHeaderList().get(1)
                 );
 
@@ -1926,6 +2026,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 selectedTeam = 2;
 
                 selectProductSubView.setSelectedTeam(selectedTeam - 1);
+                updateWorkOrderUiState();
 
                 horizontalLayout1.setClassName("");
                 horizontalLayout2.setClassName("selected");
@@ -1981,7 +2082,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                     workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
                 }
 
-                workOrderHeaderBinder.readBean(
+                readHeaderWithoutAutosave(
                         selectedWorkOrder.getWorkOrderHeaderList().get(2)
                 );
 
@@ -1998,6 +2099,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 selectedTeam = 3;
 
                 selectProductSubView.setSelectedTeam(selectedTeam - 1);
+                updateWorkOrderUiState();
 
                 horizontalLayout1.setClassName("");
                 horizontalLayout2.setClassName("");
@@ -2051,7 +2153,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                     workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
                 }
 
-                workOrderHeaderBinder.readBean(
+                readHeaderWithoutAutosave(
                         selectedWorkOrder.getWorkOrderHeaderList().get(3)
                 );
 
@@ -2068,6 +2170,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 selectedTeam = 4;
 
                 selectProductSubView.setSelectedTeam(selectedTeam - 1);
+                updateWorkOrderUiState();
 
                 horizontalLayout1.setClassName("");
                 horizontalLayout2.setClassName("");
@@ -2108,6 +2211,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         horizontalLayout4.add(cbMasterEmployee4);
         horizontalLayout4.add(cbExtraEmployees4);
 
+
+        horizontalLayout1.setClassName(selectedTeam == 1 ? "selected" : "");
+        horizontalLayout2.setClassName(selectedTeam == 2 ? "selected" : "");
+        horizontalLayout3.setClassName(selectedTeam == 3 ? "selected" : "");
+        horizontalLayout4.setClassName(selectedTeam == 4 ? "selected" : "");
 
         secondStepHome.add(horizontalLayout1);
         secondStepHome.add(horizontalLayout2);
@@ -2171,7 +2279,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
                 activeTeams.add(1);
 
-                workOrderHeaderBinder.readBean(
+                readHeaderWithoutAutosave(
                         selectedWorkOrder.getWorkOrderHeaderList().get(0)
                 );
 
@@ -2188,6 +2296,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 selectedTeam = 1;
 
                 selectProductSubView.setSelectedTeam(selectedTeam - 1);
+                updateWorkOrderUiState();
 
                 horizontalLayout1.setClassName("selected");
                 horizontalLayout2.setClassName("");
@@ -2238,14 +2347,12 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
             tryChangeTeam(2, () -> {
 
-                activeTeams.add(2);
-
                 WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(1);
                 if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
                     workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
                 }
 
-                workOrderHeaderBinder.readBean(
+                readHeaderWithoutAutosave(
                         selectedWorkOrder.getWorkOrderHeaderList().get(1)
                 );
 
@@ -2262,6 +2369,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 selectedTeam = 2;
 
                 selectProductSubView.setSelectedTeam(selectedTeam - 1);
+                updateWorkOrderUiState();
 
                 horizontalLayout1.setClassName("");
                 horizontalLayout2.setClassName("selected");
@@ -2311,14 +2419,12 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
             tryChangeTeam(3, () -> {
 
-                activeTeams.add(3);
-
                 WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(2);
                 if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
                     workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
                 }
 
-                workOrderHeaderBinder.readBean(
+                readHeaderWithoutAutosave(
                         selectedWorkOrder.getWorkOrderHeaderList().get(2)
                 );
 
@@ -2335,6 +2441,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 selectedTeam = 3;
 
                 selectProductSubView.setSelectedTeam(selectedTeam - 1);
+                updateWorkOrderUiState();
 
                 horizontalLayout1.setClassName("");
                 horizontalLayout2.setClassName("");
@@ -2383,14 +2490,12 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
             tryChangeTeam(4, () -> {
 
-                activeTeams.add(4);
-
                 WorkOrderHeader workOrderHeader = selectedWorkOrder.getWorkOrderHeaderList().get(3);
                 if((workOrderHeader.getTitle() == null) || (workOrderHeader.getTitle().length() == 0)){
                     workOrderHeader.setTitle(selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle());
                 }
 
-                workOrderHeaderBinder.readBean(
+                readHeaderWithoutAutosave(
                         selectedWorkOrder.getWorkOrderHeaderList().get(3)
                 );
 
@@ -2407,6 +2512,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
                 selectedTeam = 4;
 
                 selectProductSubView.setSelectedTeam(selectedTeam - 1);
+                updateWorkOrderUiState();
 
                 horizontalLayout1.setClassName("");
                 horizontalLayout2.setClassName("");
@@ -2446,6 +2552,11 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         horizontalLayout4.add(cbMasterEmployee4);
         horizontalLayout4.add(cbExtraEmployees4);
 
+
+        horizontalLayout1.setClassName(selectedTeam == 1 ? "selected" : "");
+        horizontalLayout2.setClassName(selectedTeam == 2 ? "selected" : "");
+        horizontalLayout3.setClassName(selectedTeam == 3 ? "selected" : "");
+        horizontalLayout4.setClassName(selectedTeam == 4 ? "selected" : "");
 
         secondStepHome.add(horizontalLayout1);
         secondStepHome.add(horizontalLayout2);
@@ -2742,9 +2853,10 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         newWorkOrderMode = false;
         headerCollapsed = false;
         sidebarCollapsed = true;
+        selectedTeam = 1;
         selectedWorkOrder = workOrder;
-        workOrderBinder.readBean(selectedWorkOrder);
-        workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(0));
+        readWorkOrderWithoutAutosave(selectedWorkOrder);
+        readHeaderWithoutAutosave(selectedWorkOrder.getWorkOrderHeaderList().get(0));
         headerSplitLayout.setSplitterPosition(HEADER_POSITION_NORMAL);
         updateWorkOrderUiState();
         selectProductSubView.setUserFunctionAndDocumentDate(UserFunction.TECHNICIAN, selectedWorkOrder.getWorkDateTime().toLocalDate());
@@ -2815,6 +2927,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         newWorkOrder.setProductList(products);
 
         selectedWorkOrder = newWorkOrder;
+        selectedTeam = 1;
 
         newWorkOrderMode = true;
 
@@ -2825,8 +2938,8 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         slideButton.setVisible(false);
         updateWorkOrderUiState();
 
-        workOrderBinder.readBean(selectedWorkOrder);
-        workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(0));
+        readWorkOrderWithoutAutosave(selectedWorkOrder);
+        readHeaderWithoutAutosave(selectedWorkOrder.getWorkOrderHeaderList().get(0));
         selectProductSubView.setUserFunctionAndDocumentDate(UserFunction.TECHNICIAN, selectedWorkOrder.getWorkDateTime().toLocalDate());
         customerByWorkAddress = customerService.getCustomerByWorkAddress(selectedWorkOrder.getWorkAddress());
         if(!customerByWorkAddress.isEmpty() && customerByWorkAddress.get().size() == 1){
@@ -2923,6 +3036,7 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         }
 
         selectedWorkOrder = newWorkOrder;
+        selectedTeam = 1;
         newWorkOrderMode = true;
         headerSplitLayout.setSplitterPosition(HEADER_POSITION_NEW);
 
@@ -2934,8 +3048,8 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         finishButton.setVisible(false);
         summaryButton.setVisible(false);
 
-        workOrderBinder.readBean(selectedWorkOrder);
-        workOrderHeaderBinder.readBean(selectedWorkOrder.getWorkOrderHeaderList().get(0));
+        readWorkOrderWithoutAutosave(selectedWorkOrder);
+        readHeaderWithoutAutosave(selectedWorkOrder.getWorkOrderHeaderList().get(0));
         selectProductSubView.setUserFunctionAndDocumentDate(UserFunction.TECHNICIAN, selectedWorkOrder.getWorkDateTime().toLocalDate());
         customerByWorkAddress = customerService.getCustomerByWorkAddress(selectedWorkOrder.getWorkAddress());
         if(!customerByWorkAddress.isEmpty() && customerByWorkAddress.get().size() == 1){
@@ -2954,11 +3068,26 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
     }
 
     private String saveSelectedWorkOrder() throws ValidationException {
+        // Alle soorten invoer kunnen een extra team actief maken.
+        updateActiveTeamFromInput();
         workOrderHeaderBinder.writeBean(selectedWorkOrder.getWorkOrderHeaderList().get(selectedTeam-1));
         workOrderBinder.writeBean(selectedWorkOrder);
+
+        // Bij werkplaats zijn fleet- en verplaatsingsgegevens niet van toepassing.
+        // Ook oude verborgen waarden van andere teams mogen niet blijven hangen.
+        if (selectedWorkOrder.getWorkLocation() != null
+                && selectedWorkOrder.getWorkLocation() != WorkLocation.ON_THE_MOVE) {
+            for (WorkOrderHeader header : selectedWorkOrder.getWorkOrderHeaderList()) {
+                header.setFleet(null);
+                header.setFleetWorkType(null);
+                header.setFleetHours(null);
+                header.setRoadTax(null);
+                header.setTunnelTax(null);
+            }
+        }
+
         selectedWorkOrder.setProductList(selectProductSubView.getSelectedProductList());
-        String id = workOrderService.save(selectedWorkOrder);
-        return id;
+        return workOrderService.save(selectedWorkOrder);
     }
 
     @Override
@@ -3132,7 +3261,103 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
         dialog.open();
     }
 
+    /**
+     * Een extra team mag zonder waarschuwing verlaten worden zolang er nog
+     * geen echte teamgegevens ingevoerd zijn. De titel wordt bij het openen
+     * automatisch van team 1 overgenomen en telt dus niet als gebruikersinput.
+     */
+    private boolean isCurrentAdditionalTeamEmpty() {
+        if (selectedWorkOrder == null || selectedTeam == null || selectedTeam <= 1) {
+            return false;
+        }
+
+        String teamOneTitle = selectedWorkOrder.getWorkOrderHeaderList().get(0).getTitle();
+        String currentTitle = tfTitle.getValue();
+        boolean titleIsDefault = currentTitle == null || currentTitle.isBlank()
+                || Objects.equals(currentTitle, teamOneTitle);
+
+        if (!titleIsDefault
+                || typeComboBox.getValue() != null
+                || (taDiscription.getValue() != null && !taDiscription.getValue().isBlank())
+                || fleetComboBox.getValue() != null
+                || fleetWorkTypeComboBox.getValue() != null
+                || (tfFleetHours.getValue() != null && !tfFleetHours.getValue().isBlank())
+                || (tfRoadTax.getValue() != null && !tfRoadTax.getValue().isBlank())
+                || (tfTunnelTax.getValue() != null && !tfTunnelTax.getValue().isBlank())) {
+            return false;
+        }
+
+        // Ook een gekozen technieker betekent dat het team gebruikt wordt.
+        boolean employeesSelected = switch (selectedTeam) {
+            case 2 -> cbMasterEmployee2.getValue() != null || !cbExtraEmployees2.getValue().isEmpty();
+            case 3 -> cbMasterEmployee3.getValue() != null || !cbExtraEmployees3.getValue().isEmpty();
+            case 4 -> cbMasterEmployee4.getValue() != null || !cbExtraEmployees4.getValue().isEmpty();
+            default -> false;
+        };
+        if (employeesSelected) {
+            return false;
+        }
+
+        // Een standaard lege tijdsrij is geen ingevulde werkurenregistratie.
+        boolean timesEntered = selectedWorkOrderTimes != null
+                && selectedWorkOrderTimes.stream().filter(Objects::nonNull).anyMatch(time ->
+                time.getTimeUp() != null || time.getTimeStart() != null
+                        || time.getTimeStop() != null || time.getTimeDown() != null
+                        || (time.getPauze() != null && !Integer.valueOf(0).equals(time.getPauze()))
+                        || Boolean.TRUE.equals(time.getBOvernight()));
+        if (timesEntered) {
+            return false;
+        }
+
+        // Het scherm maakt standaard een lege bowlrij aan (draaiuren = 1).
+        boolean bowlsEntered = selectedBowlEntities != null
+                && selectedBowlEntities.stream().filter(Objects::nonNull).anyMatch(bowl ->
+                (bowl.getChassisNumber() != null && !bowl.getChassisNumber().isBlank())
+                        || (bowl.getBowlRemovedNumber() != null && !bowl.getBowlRemovedNumber().isBlank())
+                        || (bowl.getBowlReplacedNumber() != null && !bowl.getBowlReplacedNumber().isBlank())
+                        || Boolean.TRUE.equals(bowl.getBBowlRemoved())
+                        || Boolean.TRUE.equals(bowl.getBBowlReplaced())
+                        || (bowl.getWorkhours() != null && !Integer.valueOf(1).equals(bowl.getWorkhours())));
+        if (bowlsEntered) {
+            return false;
+        }
+
+        // Producten horen bij een 0-gebaseerd teamnummer (team 2 heeft nummer 1).
+        List<Product> products = selectProductSubView.getSelectedProductList();
+        return products == null || products.stream().noneMatch(product ->
+                product != null && Objects.equals(product.getTeamNumber(), selectedTeam - 1));
+    }
+
+    /**
+     * Een extra team wordt pas verplicht zodra het werkelijk wordt gebruikt.
+     * Bij het wissen van alle invoer wordt het ook weer gedeactiveerd.
+     */
+    private void updateActiveTeamFromInput() {
+        if (selectedTeam == null || selectedTeam <= 1) {
+            return;
+        }
+        if (isCurrentAdditionalTeamEmpty()) {
+            activeTeams.remove(selectedTeam);
+        } else {
+            activeTeams.add(selectedTeam);
+        }
+    }
+
     private void tryChangeTeam(int newTeam, Runnable changeAction) {
+
+        // Alleen navigeren? Dan geen verplichte voertuig- of kraangegevens eisen.
+        if (newTeam == selectedTeam) {
+            return;
+        }
+        if (isCurrentAdditionalTeamEmpty()) {
+            // Door op een team te klikken werd het eerder meteen 'actief'.
+            // Een ongebruikt team mag niet als verplicht team blijven staan.
+            activeTeams.remove(selectedTeam);
+            changeAction.run();
+            // Validatie opnieuw uitvoeren zodat een oude foutmelding verdwijnt.
+            workOrderBinder.validate();
+            return;
+        }
 
         boolean workOrderValid =
                 workOrderBinder != null
@@ -3144,6 +3369,8 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         if (workOrderValid && headerValid) {
             changeAction.run();
+            updateActiveTeamFromInput();
+            workOrderBinder.validate();
             return;
         }
 
@@ -3161,10 +3388,12 @@ public class WorkorderView extends VerticalLayout implements HasUrlParameter<Str
 
         dialog.setConfirmText("Toch wisselen");
 
-        dialog.addConfirmListener(e -> changeAction.run());
+        dialog.addConfirmListener(e -> {
+            changeAction.run();
+            updateActiveTeamFromInput();
+            workOrderBinder.validate();
+        });
 
         dialog.open();
     }
 }
-
-

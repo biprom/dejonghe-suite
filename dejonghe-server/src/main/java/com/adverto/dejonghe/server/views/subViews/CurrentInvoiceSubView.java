@@ -73,6 +73,8 @@ public class CurrentInvoiceSubView extends VerticalLayout {
     protected static final List<SimpleDateRange> DATERANGE_VALUES = Arrays.asList(SimpleDateRanges.allValues());
     private final WorkOrderService workOrderService;
 
+    Boolean bViewAsProforma;
+
     InvoiceService invoiceService;
     InvoiceServices invoiceServices;
     ApplicationEventPublisher eventPublisher;
@@ -1538,8 +1540,11 @@ public class CurrentInvoiceSubView extends VerticalLayout {
             boolean dateSelectOK = true;
             boolean requestPO = true;
 
-            if((!filterNumber.getValue().isEmpty()) && (item.getInvoiceNumber() != null)) {
+            if(bViewAsProforma && ((!filterNumber.getValue().isEmpty()) && (item.getInvoiceNumber() != null))) {
                 numberOk = item.getInvoiceNumber().toString().toLowerCase().contains(filterNumber.getValue().toLowerCase());
+            }
+            else if((!filterNumber.getValue().isEmpty()) && (item.getFinalInvoiceNumber() != null)){
+                numberOk = item.getFinalInvoiceNumber().toString().toLowerCase().contains(filterNumber.getValue().toLowerCase());
             }
 
             if (!filterName.getValue().isEmpty()) {
@@ -1758,6 +1763,7 @@ public class CurrentInvoiceSubView extends VerticalLayout {
     }
 
     public void viewAsProformaInvoices(){
+        bViewAsProforma = Boolean.TRUE;
         columnProformaStatus.setVisible(true);
         columnFinalStatus.setVisible(false);
         totalAndVatColumn.setVisible(true);
@@ -1770,6 +1776,7 @@ public class CurrentInvoiceSubView extends VerticalLayout {
     }
 
     public void viewAsFinalWorkOrders(){
+        bViewAsProforma = Boolean.FALSE;
         columnProformaStatus.setVisible(false);
         columnFinalStatus.setVisible(true);
         totalAndVatColumn.setVisible(true);

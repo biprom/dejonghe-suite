@@ -11,26 +11,29 @@ import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
-import com.vaadin.flow.component.menubar.MenuBar;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.IntegerField;
-import com.vaadin.flow.component.textfield.NumberField;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.virtuallist.VirtualList;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationException;
 import com.vaadin.flow.data.renderer.ComponentRenderer;
-import com.vaadin.flow.router.*;
+import com.vaadin.flow.data.value.ValueChangeMode;
+import com.vaadin.flow.router.BeforeEnterEvent;
+import com.vaadin.flow.router.BeforeEnterObserver;
+import com.vaadin.flow.router.Menu;
+import com.vaadin.flow.router.PageTitle;
+import com.vaadin.flow.router.Route;
 import org.vaadin.lineawesome.LineAwesomeIconUrl;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 import static com.vaadin.flow.component.button.ButtonVariant.LUMO_TERTIARY_INLINE;
@@ -40,36 +43,30 @@ import static com.vaadin.flow.component.button.ButtonVariant.LUMO_TERTIARY_INLIN
 @Menu(order = 0, icon = LineAwesomeIconUrl.WRENCH_SOLID)
 public class EmployeeView extends VerticalLayout implements BeforeEnterObserver {
 
-    EmployeeRepo employeeRepo;
-    EmployeeService employeeService;
+    private final EmployeeRepo employeeRepo;
+    private final EmployeeService employeeService;
 
-    VirtualList<List<Employee>> employeeVirtualList;
-    Optional<List<Employee>> employees;
+    private VirtualList<List<Employee>> employeeVirtualList;
+    private List<Employee> employees = new ArrayList<>();
 
-    TextField searchField;
-    Button clearFilterButton;
-    Dialog editDialog;
-    Notification deleteWorkorderNotification;
+    private TextField searchField;
+    private Button clearFilterButton;
+    private Dialog editDialog;
+    private Notification deleteWorkorderNotification;
 
-    Binder<Employee>employeeBinder;
+    private Binder<Employee> employeeBinder;
+    private TextField firstNameField;
+    private TextField lastNameField;
+    private TextField abbriviationField;
+    private TextField phoneNumberField;
+    private Checkbox technicianCheckBox;
+    private DatePicker birthDayPicker;
+    private DatePicker startDayPicker;
+    private IntegerField prioField;
 
-    TextField firstNameField;
-    TextField lastNameField;
-    TextField abbriviationField;
-    TextField phoneNumberField;
-    Checkbox technicianCheckBox;
-    DatePicker birthDayPicker;
-    DatePicker startDayPicker;
-    IntegerField prioField;
+    private Employee employeeToEdit;
 
-    Employee employeeToEdit;
-    EmployeeCard employeeCardToEdit;
-
-    MenuBar actionBar;
-
-    public EmployeeView(EmployeeService employeeService,
-                        EmployeeRepo employeeRepo) {
-
+    public EmployeeView(EmployeeService employeeService, EmployeeRepo employeeRepo) {
         this.employeeService = employeeService;
         this.employeeRepo = employeeRepo;
 
@@ -79,15 +76,12 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
         setUpBinder();
         setUpVirtualList();
 
-        this.getStyle()
-                .set("display", "flex")
-                .set("flex-direction", "column");
-        this.addClassName("view-wrapper");
-        this.getStyle().set("background-color", "#e9ebef");
-
-        this.setPadding(true);
-        this.setSpacing(true);
-        this.setSizeFull();
+        getStyle().set("display", "flex").set("flex-direction", "column");
+        addClassName("view-wrapper");
+        getStyle().set("background-color", "#e9ebef");
+        setPadding(true);
+        setSpacing(true);
+        setSizeFull();
 
         HorizontalLayout horizontalLayout = new HorizontalLayout();
         horizontalLayout.setWidth("100%");
@@ -95,11 +89,9 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
                 .set("border-radius", "16px")
                 .set("box-shadow", "0 4px 8px rgba(0,0,0,0.9)");
         horizontalLayout.setSpacing(false);
-        //horizontalLayout.setPadding(true);
         horizontalLayout.setAlignItems(FlexComponent.Alignment.CENTER);
-        horizontalLayout.add(getActionMenu(),getSearchBar());
-        this.add(horizontalLayout);
-
+        horizontalLayout.add(getActionMenu(), getSearchBar());
+        add(horizontalLayout);
 
         VerticalLayout layout = new VerticalLayout();
         layout.setSizeFull();
@@ -108,7 +100,7 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
                 .set("box-shadow", "0 4px 8px rgba(0,0,0,0.9)");
         layout.add(employeeVirtualList);
         layout.expand(employeeVirtualList);
-        this.add(layout);
+        add(layout);
     }
 
     public Notification createReportDelete() {
@@ -116,38 +108,32 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
         deleteWorkorderNotification.addThemeVariants(NotificationVariant.LUMO_ERROR);
 
         Icon icon = VaadinIcon.WARNING.create();
-        Button retryBtn = new Button("Annuleer",
-                clickEvent -> deleteWorkorderNotification.close());
-        retryBtn.getStyle().setMargin("0 0 0 var(--lumo-space-l)");
+        Button cancelButton = new Button("Annuleer", event -> deleteWorkorderNotification.close());
+        cancelButton.getStyle().setMargin("0 0 0 var(--lumo-space-l)");
 
-        var layout = new HorizontalLayout(icon,
-                new Text("Ben je zeker dat je deze persoon wil wissen?"), retryBtn,
-                createCloseBtn(deleteWorkorderNotification));
+        HorizontalLayout layout = new HorizontalLayout(icon,
+                new Text("Ben je zeker dat je deze persoon wil wissen?"),
+                cancelButton, createCloseBtn(deleteWorkorderNotification));
         layout.setAlignItems(FlexComponent.Alignment.CENTER);
-
         deleteWorkorderNotification.add(layout);
-
         return deleteWorkorderNotification;
     }
 
     public Button createCloseBtn(Notification notification) {
-        Button removeBtn = new Button(VaadinIcon.TRASH.create(),
-                clickEvent -> {
-                    //employeeToEdit = employee;
-                    //employeeCardToEdit = card;
-                    if(employeeToEdit != null){
-                        //when filter is selected
-                        employees.get().remove(employeeToEdit);
-                        employeeService.delete(employeeToEdit);
-                        setDataToList();
-                    }
-                    else{
-                        Notification.show("Geen werkbonnen te verwijderen");
-                    }
-                    notification.close();
-                });
-        removeBtn.addThemeVariants(LUMO_TERTIARY_INLINE);
-        return removeBtn;
+        Button removeButton = new Button(VaadinIcon.TRASH.create(), event -> {
+            if (employeeToEdit != null && employeeToEdit.getId() != null) {
+                employeeService.delete(employeeToEdit);
+                employeeToEdit = null;
+                getAllEmployees();
+                setDataToList();
+                Notification.show("Personeelslid verwijderd.");
+            } else {
+                Notification.show("Geen personeelslid geselecteerd.");
+            }
+            notification.close();
+        });
+        removeButton.addThemeVariants(LUMO_TERTIARY_INLINE);
+        return removeButton;
     }
 
     private void setUpBinder() {
@@ -171,46 +157,44 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
                 .bind(Employee::getDateOfService, Employee::setDateOfService);
         employeeBinder.forField(prioField)
                 .asRequired("Prioriteit is verplicht")
-                .withValidator(
-                        value -> value != null,
-                        "Prioriteit is verplicht")
+                .withValidator(value -> value != null, "Prioriteit is verplicht")
                 .bind(Employee::getPriority, Employee::setPriority);
     }
 
     private void setUpEditDialog() {
         editDialog = new Dialog();
         editDialog.setHeaderTitle("Personeelgegevens");
-
-        VerticalLayout dialogLayout = createDialogLayout();
-        editDialog.add(dialogLayout);
-
-        Button saveButton = createSaveButton(editDialog);
-        Button cancelButton = new Button("Annuleer", e -> editDialog.close());
-        editDialog.getFooter().add(cancelButton);
-        editDialog.getFooter().add(saveButton);
+        editDialog.add(createDialogLayout());
+        editDialog.getFooter().add(
+                new Button("Annuleer", event -> editDialog.close()),
+                createSaveButton(editDialog));
     }
 
     private Button createSaveButton(Dialog dialog) {
-        Button saveButton = new Button("Bewaar", e -> {
+        Button saveButton = new Button("Bewaar", event -> {
+            if (employeeToEdit == null) {
+                return;
+            }
             try {
                 employeeBinder.writeBean(employeeToEdit);
                 employeeRepo.save(employeeToEdit);
-                employeeCardToEdit.refreshWith(employeeToEdit);
-                Notification.show("Personeelgegevens zijn aangepast.");
-            } catch (ValidationException ex) {
-                throw new RuntimeException(ex);
+                getAllEmployees();
+                setDataToList();
+                dialog.close();
+                Notification.show("Personeelgegevens zijn bewaard.");
+            } catch (ValidationException exception) {
+                Notification message = Notification.show("Controleer de verplichte velden.");
+                message.addThemeVariants(NotificationVariant.LUMO_ERROR);
+            } catch (RuntimeException exception) {
+                Notification message = Notification.show("Personeelgegevens konden niet worden bewaard.");
+                message.addThemeVariants(NotificationVariant.LUMO_ERROR);
             }
-            dialog.close();
-            setDataToList();
         });
         saveButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-
         return saveButton;
     }
 
-
     private VerticalLayout createDialogLayout() {
-
         firstNameField = new TextField("voornaam");
         lastNameField = new TextField("familienaam");
         abbriviationField = new TextField("afkorting");
@@ -221,46 +205,26 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
         prioField = new IntegerField("prioriteit");
 
         VerticalLayout dialogLayout = new VerticalLayout(firstNameField,
-                lastNameField,abbriviationField,phoneNumberField,birthDayPicker,startDayPicker,technicianCheckBox,prioField);
+                lastNameField, abbriviationField, phoneNumberField, birthDayPicker,
+                startDayPicker, technicianCheckBox, prioField);
         dialogLayout.setPadding(false);
         dialogLayout.setSpacing(false);
         dialogLayout.setAlignItems(FlexComponent.Alignment.STRETCH);
         dialogLayout.getStyle().set("width", "18rem").set("max-width", "100%");
-
         return dialogLayout;
     }
 
-
     private HorizontalLayout getSearchBar() {
-
         HorizontalLayout searchLayout = new HorizontalLayout();
         clearFilterButton = new Button(VaadinIcon.CLOSE.create());
-
         searchLayout.setWidth("100%");
         searchField = new TextField();
         searchField.setSizeFull();
         searchField.setPlaceholder("Zoek op naam");
-        searchField.addValueChangeListener(event -> {
-            Optional<List<Employee>> optEmployee =
-                    employeeService.getEmployeeByFirstName(event.getValue())
-                            .map(list -> {
-                                list.sort(Comparator.comparing(x -> x.getFirstName().replaceFirst("^[’']", ""), String.CASE_INSENSITIVE_ORDER));
-                                return list;
-                            });
-            if((optEmployee.isPresent()) && (optEmployee.get().size() > 0)) {
-                List<List<Employee>> rows = chunk(optEmployee.get(), 3);
-                employeeVirtualList.setItems(rows);
-            }
-            else{
-                Notification.show("Geen personeel gevonden");
-            }
-        });
-
-        clearFilterButton.addClickListener(e -> {
-            searchField.setValue("");
-        });
-
-        searchLayout.add(clearFilterButton,searchField);
+        searchField.setValueChangeMode(ValueChangeMode.LAZY);
+        searchField.addValueChangeListener(event -> setDataToList());
+        clearFilterButton.addClickListener(event -> searchField.setValue(""));
+        searchLayout.add(clearFilterButton, searchField);
         return searchLayout;
     }
 
@@ -273,62 +237,83 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
     }
 
     private void getAllEmployees() {
-        employees = employeeService.getAll()
-                .map(list -> list.stream()
-                        .sorted(Comparator.comparingInt(
-                                e -> e.getPriority() == 0
-                                        ? Integer.MAX_VALUE
-                                        : e.getPriority()
-                        ))
-                        .collect(Collectors.toList())
-                );
+        employees = employeeService.getAll().orElseGet(ArrayList::new).stream()
+                .sorted(Comparator
+                        .comparingInt((Employee employee) -> {
+                            Integer priority = employee.getPriority();
+                            return (priority == null || priority <= 0)
+                                    ? Integer.MAX_VALUE : priority;
+                        })
+                        .thenComparing(employee -> safe(employee.getFirstName()),
+                                String.CASE_INSENSITIVE_ORDER))
+                .collect(Collectors.toList());
     }
 
     private void setUpVirtualList() {
-
-        employeeVirtualList = new VirtualList();
+        employeeVirtualList = new VirtualList<>();
         employeeVirtualList.setHeight("100%");
         employeeVirtualList.setRenderer(new ComponentRenderer<>(row -> {
             HorizontalLayout rowLayout = new HorizontalLayout();
-            //rowLayout.setWidthFull();
+            rowLayout.setWidthFull();
             rowLayout.setSpacing(true);
-
-            row.forEach(customer -> {
-                EmployeeCard card = new EmployeeCard(customer,this);
+            for (Employee employee : row) {
+                EmployeeCard card = new EmployeeCard(employee, this);
                 card.addClassName("virtual-item");
-                card.setWidth("33%");  // 3 kolommen
+                card.setWidth("33%");
                 rowLayout.add(card);
-            });
-
+            }
             return rowLayout;
         }));
         setDataToList();
     }
 
     private void setDataToList() {
-        List<List<Employee>> rows = chunk(employees.get(), 3);
-        employeeVirtualList.setItems(rows);
+        if (employeeVirtualList == null) {
+            return;
+        }
+        String query = searchField == null ? "" : searchField.getValue().trim().toLowerCase(Locale.ROOT);
+        List<Employee> shown = employees;
+        if (!query.isEmpty()) {
+            shown = employees.stream()
+                    .filter(employee -> (safe(employee.getFirstName()) + " "
+                            + safe(employee.getLastName()) + " "
+                            + safe(employee.getAbbreviation()))
+                            .toLowerCase(Locale.ROOT).contains(query))
+                    .collect(Collectors.toList());
+        }
+        employeeVirtualList.setItems(chunk(shown, 3));
     }
 
     public void openRemoveDialog(Employee employee, EmployeeCard card) {
         employeeToEdit = employee;
-        employeeCardToEdit = card;
         deleteWorkorderNotification.open();
     }
 
     public void openEditDialog(Employee employee, EmployeeCard card) {
         employeeToEdit = employee;
-        employeeCardToEdit = card;
         employeeBinder.readBean(employeeToEdit);
         editDialog.open();
+    }
+
+    public void openWeeklyScheduleDialog(Employee employee) {
+        if (employee == null || employee.getId() == null) {
+            Notification.show("Bewaar eerst het personeelslid.");
+            return;
+        }
+        new EmployeeWeeklyScheduleDialog(employee, schedule -> {
+            // Load the latest record so this operation only changes the week schedule.
+            Employee current = employeeRepo.findById(employee.getId()).orElse(employee);
+            current.setWeeklySchedule(schedule);
+            employeeRepo.save(current);
+            getAllEmployees();
+            setDataToList();
+        }).open();
     }
 
     private HorizontalLayout getActionMenu() {
         HorizontalLayout actionBarLayout = new HorizontalLayout();
         actionBarLayout.setAlignItems(FlexComponent.Alignment.CENTER);
         actionBarLayout.setPadding(true);
-
-        //add New Button
         Button newButton = new Button("+");
         newButton.addClassName("subNav-new");
         newButton.addClickListener(event -> {
@@ -337,16 +322,19 @@ public class EmployeeView extends VerticalLayout implements BeforeEnterObserver 
             employeeToAdd.setLastName("");
             employeeToAdd.setPriority(0);
             employeeToAdd.setAbbreviation("");
-            EmployeeCard employeeCard = new EmployeeCard(employeeToAdd,this);
-            employees.get().add(employeeToAdd);
-            openEditDialog(employeeToAdd,employeeCard);
+            // Only add to MongoDB/the list after Save. Cancel creates no empty employee.
+            openEditDialog(employeeToAdd, null);
         });
         actionBarLayout.add(newButton);
         return actionBarLayout;
     }
 
-    @Override
-    public void beforeEnter(BeforeEnterEvent beforeEnterEvent) {
+    private static String safe(String value) {
+        return value == null ? "" : value;
+    }
 
+    @Override
+    public void beforeEnter(BeforeEnterEvent event) {
+        // No additional navigation logic needed.
     }
 }

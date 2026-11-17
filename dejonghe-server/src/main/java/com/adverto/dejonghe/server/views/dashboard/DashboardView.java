@@ -1,13 +1,17 @@
 package com.adverto.dejonghe.server.views.dashboard;
 
 import com.adverto.dejonghe.common.dbservices.EmployeeService;
+import com.adverto.dejonghe.common.entities.employee.DayPart;
+import com.adverto.dejonghe.common.entities.employee.EmployeeAbsence;
 import com.adverto.dejonghe.common.dbservices.WorkOrderService;
 import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrder;
 import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrderGantSeriesItem;
 import com.adverto.dejonghe.common.entities.WorkOrder.WorkOrderTime;
 import com.adverto.dejonghe.common.entities.employee.Employee;
+import com.adverto.dejonghe.common.entities.employee.WorkDayAvailability;
 import com.adverto.dejonghe.common.entities.enums.workorder.WorkOrderStatus;
 import com.adverto.dejonghe.server.customEvents.GetSelectedWorkOrderEvent;
+import com.adverto.dejonghe.server.services.employee.EmployeeAbsenceService;
 import com.adverto.dejonghe.server.views.workorder.WorkorderView;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.charts.Chart;
@@ -19,6 +23,7 @@ import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Paragraph;
+import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -26,12 +31,18 @@ import com.vaadin.flow.router.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -44,6 +55,8 @@ public class DashboardView extends VerticalLayout {
     WorkOrderService workOrderService;
     ApplicationEventPublisher eventPublisher;
     EmployeeService employeeService;
+    private final EmployeeAbsenceService absenceService;
+    private final EmployeeAbsenceDialog absenceDialog;
 
     final Chart chart = new Chart(ChartType.GANTT);
     final Configuration configuration = chart.getConfiguration();
@@ -53,6 +66,19 @@ public class DashboardView extends VerticalLayout {
 
     GanttSeries series;
     GanttSeries overlapSeries;
+    GanttSeries unavailableSeries;
+    GanttSeries absenceSeries;
+    private XAxis employeeNameColumn;
+
+    // Grenzen van de zichtbare werkdag in dit dashboard.
+    // Voormiddag = 05:00-12:00, namiddag = 12:00-22:00.
+    private static final LocalTime VISIBLE_DAY_START = LocalTime.of(5, 0);
+    private static final LocalTime AFTERNOON_START = LocalTime.NOON;
+    private static final LocalTime VISIBLE_DAY_END = LocalTime.of(22, 0);
+    private static final SolidColor UNAVAILABLE_COLOR = new SolidColor("#CDD2D8");
+    private static final SolidColor VACATION_COLOR = new SolidColor("#B6A1DF");
+    private static final SolidColor SICK_COLOR = new SolidColor("#E7A4A0");
+    private static final SolidColor OTHER_ABSENCE_COLOR = new SolidColor("#9DBDD9");
 
     List<WorkOrder>workOrderList;
     List<WorkOrderGantSeriesItem>workOrderGantSeriesItems = new ArrayList<>();
@@ -75,12 +101,16 @@ public class DashboardView extends VerticalLayout {
     public DashboardView(WorkOrderService workOrderService,
                          ApplicationEventPublisher eventPublisher,
                          EmployeeService employeeService,
-                         DashboardDateState dashboardDateState) {
+                         DashboardDateState dashboardDateState,
+                         EmployeeAbsenceService absenceService) {
 
         this.eventPublisher = eventPublisher;
         this.workOrderService = workOrderService;
         this.employeeService = employeeService;
         this.dashboardDateState = dashboardDateState;
+        this.absenceService = absenceService;
+        this.absenceDialog = new EmployeeAbsenceDialog(
+                employeeService, absenceService, this::refreshAbsenceChart);
 
         selectedStartDate = dashboardDateState.getStartDate();
         selectedEndDate = dashboardDateState.getEndDate();
@@ -175,13 +205,13 @@ public class DashboardView extends VerticalLayout {
         ZoneId zone = ZoneId.systemDefault();
 
         long startOfDay = selectedStartDate
-                .atTime(5, 0)
+                .atTime(VISIBLE_DAY_START)
                 .atZone(zone)
                 .toInstant()
                 .toEpochMilli();
 
         long endOfDay = selectedEndDate
-                .atTime(22, 0)
+                .atTime(VISIBLE_DAY_END)
                 .atZone(zone)
                 .toInstant()
                 .toEpochMilli();
@@ -250,7 +280,6 @@ public class DashboardView extends VerticalLayout {
         configuration.getRangeSelector().setSelected(0);
 
         Time time = new Time();
-        time.setUseUTC(false);
         configuration.setTime(time);
 
         navigator = configuration.getNavigator();
@@ -274,9 +303,8 @@ public class DashboardView extends VerticalLayout {
         AxisGrid grid = new AxisGrid();
         grid.setEnabled(true);
 
-        grid.setColumns(List.of(
-                createProjectColumn()
-        ));
+        employeeNameColumn = createProjectColumn();
+        grid.setColumns(List.of(employeeNameColumn));
 
         yAxis.setGrid(grid);
 
@@ -284,6 +312,8 @@ public class DashboardView extends VerticalLayout {
 
         configuration.setPlotOptions(plotOptionsGantt);
 
+        // Alle series gebruiken dezelfde volledige personeelrij.
+        plotOptionsGantt.setGrouping(false);
         plotOptionsGantt.setPointPadding(0.0);
         plotOptionsGantt.setGroupPadding(0.0);
         plotOptionsGantt.setBorderWidth(1);
@@ -292,6 +322,43 @@ public class DashboardView extends VerticalLayout {
         );
 
         createProjectDevelopmentSeries();
+
+        // Eerste series = achtergrondblokken voor vaste vrije dagen/dagdelen.
+        // Werkbonnen en overlappingskleuren worden er daarna bovenop getekend.
+        unavailableSeries = new GanttSeries("Niet aanwezig");
+        PlotOptionsGantt unavailableOptions = new PlotOptionsGantt();
+        unavailableOptions.setGrouping(false);
+        unavailableOptions.setBorderWidth(0);
+        unavailableOptions.setPointPadding(0.0);
+        unavailableOptions.setGroupPadding(0.0);
+        unavailableOptions.setEnableMouseTracking(false);
+        unavailableSeries.setPlotOptions(unavailableOptions);
+
+        refreshUnavailablePeriods(selectedStartDate, selectedEndDate);
+        configuration.addSeries(unavailableSeries);
+
+        // Gekleurde, datumgebonden afwezigheden komen boven grijs,
+        // maar onder de bestaande werkbonnen en oranje overlappingen.
+        absenceSeries = new GanttSeries("Verlof en ziekte");
+        PlotOptionsGantt absenceOptions = new PlotOptionsGantt();
+        absenceOptions.setGrouping(false);
+        absenceOptions.setPointPadding(0.0);
+        absenceOptions.setGroupPadding(0.0);
+        absenceOptions.setBorderWidth(0);
+        DataLabels absenceLabels = new DataLabels(true);
+        absenceLabels.setFormat("{point.custom.assignee}");
+        absenceLabels.setInside(true);
+        absenceLabels.setAlign(HorizontalAlign.CENTER);
+        Style absenceLabelStyle = new Style();
+        absenceLabelStyle.setColor(SolidColor.BLACK);
+        absenceLabelStyle.setFontSize("13px");
+        absenceLabels.setStyle(absenceLabelStyle);
+        ArrayList<DataLabels> absenceDataLabels = new ArrayList<>();
+        absenceDataLabels.add(absenceLabels);
+        absenceOptions.setDataLabels(absenceDataLabels);
+        absenceSeries.setPlotOptions(absenceOptions);
+        refreshAbsences(selectedStartDate, selectedEndDate);
+        configuration.addSeries(absenceSeries);
 
         PlotOptionsGantt seriesPlotOptions =
                 new PlotOptionsGantt();
@@ -339,10 +406,34 @@ public class DashboardView extends VerticalLayout {
 
         chart.addPointClickListener(event -> {
 
-            var ganttSeries = (GanttSeries) event.getSeries();
+            // Verlof/ziekte is klikbaar om te bewerken of te verwijderen.
+            if (event.getSeries() == absenceSeries) {
+                if (event.getItemIndex() >= 0
+                        && event.getItemIndex() < absenceSeries.size()) {
+                    Object custom = absenceSeries.get(event.getItemIndex()).getCustom();
+                    if (custom instanceof AbsenceChartData absenceData) {
+                        absenceService.findById(absenceData.getId())
+                                .ifPresent(absenceDialog::openEdit);
+                    }
+                }
+                return;
+            }
 
-            var customData = (TaskCustomData)
-                    ganttSeries.get(event.getItemIndex()).getCustom();
+            // Een grijs vak is geen werkbon. Bescherm ook tegen clicks op
+            // andere series zonder geldig workOrderId (zoals overlappingen).
+            if (!(event.getSeries() instanceof GanttSeries ganttSeries)
+                    || ganttSeries == unavailableSeries
+                    || event.getItemIndex() < 0
+                    || event.getItemIndex() >= ganttSeries.size()) {
+                return;
+            }
+
+            Object custom = ganttSeries.get(event.getItemIndex()).getCustom();
+            if (!(custom instanceof TaskCustomData customData)
+                    || customData.getId() == null
+                    || customData.getId().isBlank()) {
+                return;
+            }
 
             VerticalLayout verticalLayout = new VerticalLayout();
             verticalLayout.add(new H3(customData.getFullName()));
@@ -401,10 +492,14 @@ public class DashboardView extends VerticalLayout {
                 event -> shiftDay(1)
         );
 
+        Button addAbsenceButton = new Button(
+                "+ Afwezigheid", event -> absenceDialog.openNew(selectedStartDate));
+
         HorizontalLayout toolbar = new HorizontalLayout(
                 previousDay,
                 todayButton,
                 nextDay,
+                addAbsenceButton,
                 startDatePicker,
                 endDatePicker
         );
@@ -426,8 +521,20 @@ public class DashboardView extends VerticalLayout {
                 .set("max-width", "calc(100% - 32px)");
 
 
+        HorizontalLayout legend = new HorizontalLayout(
+                createLegendBadge("Vaste vrije dag", "#CDD2D8"),
+                createLegendBadge("Verlof", "#B6A1DF"),
+                createLegendBadge("Ziekte", "#E7A4A0"),
+                createLegendBadge("Andere afwezigheid", "#9DBDD9"),
+                createLegendBadge("Werkbon", "#FFEC99"),
+                createLegendBadge("Overlapping", "#FFA94D")
+        );
+        legend.setAlignItems(Alignment.CENTER);
+        legend.getStyle().set("flex-wrap", "wrap");
+
         VerticalLayout layout = new VerticalLayout(
                 toolbar,
+                legend,
                 chart
         );
 
@@ -435,6 +542,18 @@ public class DashboardView extends VerticalLayout {
 
         add(layout);
 
+    }
+
+    private Span createLegendBadge(String title, String color) {
+        Span badge = new Span(title);
+        badge.getStyle()
+                .set("background-color", color)
+                .set("color", "#252525")
+                .set("padding", "5px 10px")
+                .set("border-radius", "6px")
+                .set("font-size", "12px")
+                .set("font-weight", "600");
+        return badge;
     }
 
     private void showSingleDay(LocalDate day) {
@@ -455,8 +574,6 @@ public class DashboardView extends VerticalLayout {
         /*
          * Voorkomt dat setValue() opnieuw de listeners uitvoert.
          */
-        updatingDatePickers = true;
-
         updatingDatePickers = true;
 
         try {
@@ -503,13 +620,13 @@ public class DashboardView extends VerticalLayout {
         ZoneId zone = ZoneId.systemDefault();
 
         long start = startDate
-                .atTime(5, 0)
+                .atTime(VISIBLE_DAY_START)
                 .atZone(zone)
                 .toInstant()
                 .toEpochMilli();
 
         long end = endDate
-                .atTime(22, 0)
+                .atTime(VISIBLE_DAY_END)
                 .atZone(zone)
                 .toInstant()
                 .toEpochMilli();
@@ -527,6 +644,9 @@ public class DashboardView extends VerticalLayout {
         xAxis.setMin(start);
         xAxis.setMax(end);
 
+        // De weekplanning volgt altijd de datum- of periodekeuze.
+        refreshUnavailablePeriods(startDate, endDate);
+        refreshAbsences(startDate, endDate);
         chart.drawChart();
     }
 
@@ -537,11 +657,186 @@ public class DashboardView extends VerticalLayout {
                 .format(DateTimeFormatter.ofPattern("HH:mm"));
     }
 
+    /**
+     * Tekent de terugkerende afwezigheden op de juiste Gantt-rij.
+     * De vaste planning blijft read-only: hier wordt niets in MongoDB bewaard.
+     * De geplande werkbonnen blijven zichtbaar boven eventuele grijze blokken.
+     */
+    private void refreshUnavailablePeriods(LocalDate from, LocalDate to) {
+        if (from == null || to == null || from.isAfter(to) || unavailableSeries == null) {
+            return;
+        }
+
+        List<Employee> all = employeeService.getAll().orElse(List.of());
+        List<Employee> prioritized = all.stream()
+                .filter(employee -> employee != null && employee.getPriority() != null
+                        && employee.getPriority() > 0)
+                .sorted(Comparator.comparingInt(Employee::getPriority))
+                .toList();
+
+        // De bestaande werkbonnen gebruiken priority - 1 als y-coordinaat.
+        // Maak diezelfde rijen expliciet aan, ook als er geen werkbon staat.
+        int maxPriority = prioritized.stream()
+                .mapToInt(Employee::getPriority)
+                .max().orElse(0);
+        String[] employeeNames = new String[maxPriority];
+        Arrays.fill(employeeNames, "");
+        Set<Integer> usedPriorities = new HashSet<>();
+        for (Employee employee : prioritized) {
+            int priority = employee.getPriority();
+            if (!usedPriorities.add(priority)) {
+                // Gedeelde prioriteiten gebruiken dezelfde dashboardrij,
+                // net zoals bij de oorspronkelijke werkbonnen.
+                continue;
+            }
+            employeeNames[priority - 1] = employeeDisplayName(employee);
+        }
+        configuration.getyAxis().setCategories(employeeNames);
+        if (employeeNameColumn != null) {
+            employeeNameColumn.setCategories(employeeNames);
+        }
+
+        List<GanttSeriesItem> unavailableItems = new ArrayList<>();
+        ZoneId zone = ZoneId.systemDefault();
+        for (Employee employee : prioritized) {
+            int yPosition = employee.getPriority() - 1;
+            Map<DayOfWeek, WorkDayAvailability> byWeekday = new EnumMap<>(DayOfWeek.class);
+            for (WorkDayAvailability day : WorkDayAvailability.normalize(employee.getWeeklySchedule())) {
+                byWeekday.put(day.getDayOfWeek(), day);
+            }
+
+            for (LocalDate date = from; !date.isAfter(to); date = date.plusDays(1)) {
+                WorkDayAvailability availability = byWeekday.get(date.getDayOfWeek());
+                if (availability == null) {
+                    continue;
+                }
+
+                if (!availability.isMorning()) {
+                    unavailableItems.add(createUnavailableItem(employee, yPosition, date,
+                            VISIBLE_DAY_START, AFTERNOON_START, zone));
+                }
+                if (!availability.isAfternoon()) {
+                    unavailableItems.add(createUnavailableItem(employee, yPosition, date,
+                            AFTERNOON_START, VISIBLE_DAY_END, zone));
+                }
+            }
+        }
+        unavailableSeries.setData(unavailableItems);
+    }
+
+    private GanttSeriesItem createUnavailableItem(Employee employee, int yPosition,
+                                                  LocalDate day, LocalTime start, LocalTime end,
+                                                  ZoneId zone) {
+        GanttSeriesItem item = new GanttSeriesItem(
+                employeeDisplayName(employee),
+                day.atTime(start).atZone(zone).toInstant(),
+                day.atTime(end).atZone(zone).toInstant());
+        item.setY(yPosition);
+        item.setColor(UNAVAILABLE_COLOR);
+        return item;
+    }
+
+    /** Reload persisted absences after a save/delete, without rebuilding work orders. */
+    private void refreshAbsenceChart() {
+        refreshAbsences(selectedStartDate, selectedEndDate);
+        chart.drawChart();
+    }
+
+    /** Dated absences override recurring free-day colors only on scheduled working halves. */
+    private void refreshAbsences(LocalDate from, LocalDate to) {
+        if (absenceSeries == null || from == null || to == null || from.isAfter(to)) {
+            return;
+        }
+
+        Map<String, Employee> employeesById = employeeService.getAll().orElse(List.of())
+                .stream()
+                .filter(e -> e != null && e.getId() != null)
+                .collect(Collectors.toMap(Employee::getId, e -> e, (a, b) -> a));
+
+        List<GanttSeriesItem> absenceItems = new ArrayList<>();
+        ZoneId zone = ZoneId.systemDefault();
+        for (EmployeeAbsence absence : absenceService.findInRange(from, to)) {
+            if (absence.getType() == null || absence.getStartDate() == null
+                    || absence.getEndDate() == null || absence.getStartPart() == null
+                    || absence.getEndPart() == null) {
+                continue;
+            }
+            Employee employee = employeesById.get(absence.getEmployeeId());
+            if (employee == null || employee.getPriority() == null
+                    || employee.getPriority() <= 0) {
+                continue;
+            }
+
+            int yPosition = employee.getPriority() - 1;
+            Map<DayOfWeek, WorkDayAvailability> byDay = new EnumMap<>(DayOfWeek.class);
+            for (WorkDayAvailability availability
+                    : WorkDayAvailability.normalize(employee.getWeeklySchedule())) {
+                byDay.put(availability.getDayOfWeek(), availability);
+            }
+
+            LocalDate first = absence.getStartDate().isAfter(from)
+                    ? absence.getStartDate() : from;
+            LocalDate last = absence.getEndDate().isBefore(to)
+                    ? absence.getEndDate() : to;
+
+            for (LocalDate date = first; !date.isAfter(last); date = date.plusDays(1)) {
+                WorkDayAvailability regular = byDay.get(date.getDayOfWeek());
+                if (regular == null) {
+                    continue;
+                }
+
+                // Eerste dag: respecteer de gekozen start-helft.
+                // Laatste dag: respecteer de gekozen eind-helft.
+                boolean includeMorning = !date.equals(absence.getStartDate())
+                        || absence.getStartPart() == DayPart.MORNING;
+                boolean includeAfternoon = !date.equals(absence.getEndDate())
+                        || absence.getEndPart() == DayPart.AFTERNOON;
+                // Voor een registratie van 1 dag gelden beide grenzen.
+                if (date.equals(absence.getEndDate()) && absence.getEndPart() == DayPart.MORNING) {
+                    includeAfternoon = false;
+                }
+
+                if (includeMorning && regular.isMorning()) {
+                    absenceItems.add(createAbsenceItem(absence, yPosition, date,
+                            VISIBLE_DAY_START, AFTERNOON_START, zone));
+                }
+                if (includeAfternoon && regular.isAfternoon()) {
+                    absenceItems.add(createAbsenceItem(absence, yPosition, date,
+                            AFTERNOON_START, VISIBLE_DAY_END, zone));
+                }
+            }
+        }
+        absenceSeries.setData(absenceItems);
+    }
+
+    private GanttSeriesItem createAbsenceItem(EmployeeAbsence absence, int yPosition,
+                                               LocalDate date, LocalTime start,
+                                               LocalTime end, ZoneId zone) {
+        GanttSeriesItem item = new GanttSeriesItem(absence.getType().getLabel(),
+                date.atTime(start).atZone(zone).toInstant(),
+                date.atTime(end).atZone(zone).toInstant());
+        item.setY(yPosition);
+        item.setCustom(new AbsenceChartData(absence.getId(), absence.getType().getLabel()));
+        item.setColor(switch (absence.getType()) {
+            case VACATION -> VACATION_COLOR;
+            case SICK -> SICK_COLOR;
+            case OTHER -> OTHER_ABSENCE_COLOR;
+        });
+        return item;
+    }
+
+    private String employeeDisplayName(Employee employee) {
+        String firstName = employee.getFirstName() == null ? "" : employee.getFirstName().trim();
+        String lastName = employee.getLastName() == null ? "" : employee.getLastName().trim();
+        return (firstName + " " + lastName).trim();
+    }
+
     private XAxis createProjectColumn() {
         XAxis column = new XAxis();
         column.setTitle("");
         final Labels label = new Labels();
-        label.setFormat("{point.name}");
+        // Ook bij technici zonder werkbon de naam blijven tonen.
+        label.setFormat("{value}");
         column.setLabels(label);
         return column;
     }
@@ -856,12 +1151,12 @@ public class DashboardView extends VerticalLayout {
                         continue;
                     }
 
-                    java.time.Instant overlapStart =
+                    Instant overlapStart =
                             first.getStart().isAfter(second.getStart())
                                     ? first.getStart()
                                     : second.getStart();
 
-                    java.time.Instant overlapEnd =
+                    Instant overlapEnd =
                             first.getEnd().isBefore(second.getEnd())
                                     ? first.getEnd()
                                     : second.getEnd();
@@ -886,14 +1181,14 @@ public class DashboardView extends VerticalLayout {
 
     private static class OverlapSegment {
         private final String customerNames;
-        private final java.time.Instant start;
-        private final java.time.Instant end;
+        private final Instant start;
+        private final Instant end;
         private final Integer yPosition;
 
         private OverlapSegment(
                 String customerNames,
-                java.time.Instant start,
-                java.time.Instant end,
+                Instant start,
+                Instant end,
                 Integer yPosition) {
             this.customerNames = customerNames;
             this.start = start;
@@ -948,6 +1243,23 @@ public class DashboardView extends VerticalLayout {
     }
 
 
+
+    /** These points refer to employeeAbsences, not to work order IDs. */
+    @SuppressWarnings("unused")
+    static class AbsenceChartData extends AbstractConfigurationObject {
+        private String id;
+        private String assignee;
+
+        public AbsenceChartData(String id, String assignee) {
+            this.id = id;
+            this.assignee = assignee;
+        }
+
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
+        public String getAssignee() { return assignee; }
+        public void setAssignee(String assignee) { this.assignee = assignee; }
+    }
 
     @SuppressWarnings("unused")
     static class TaskCustomData extends AbstractConfigurationObject {
@@ -1011,3 +1323,4 @@ public class DashboardView extends VerticalLayout {
         }
     }
 }
+

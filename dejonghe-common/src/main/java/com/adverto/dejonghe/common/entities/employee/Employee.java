@@ -7,6 +7,7 @@ import lombok.Setter;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Document
 @Getter
@@ -26,4 +27,8 @@ public class Employee {
     private LocalDate birthDate;
     private LocalDate dateOfService;
     private Integer priority = 0;
+
+    // Recurring schedule. Older MongoDB documents may not contain this field;
+    // WorkDayAvailability.normalize() handles that case.
+    private List<WorkDayAvailability> weeklySchedule = WorkDayAvailability.defaultWeek();
 }
